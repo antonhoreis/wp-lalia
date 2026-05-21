@@ -92,11 +92,12 @@ if ( ! class_exists( 'LaliaStripePackageId' ) ) {
 			}
 
 			$pkg_id = get_post_meta( $product->get_id(), self::PRODUCT_META_KEY, true );
-			if ( is_string( $pkg_id ) && $this->is_uuid( $pkg_id ) ) {
+			if ( is_string( $pkg_id ) && $this->is_valid_identifier( $pkg_id ) ) {
 				$metadata['package_id'] = $pkg_id;
 			} elseif ( $pkg_id !== '' ) {
 				// Non-empty but malformed — log so the ops team can spot a
-				// typo at the source (a UUID has 36 chars with hex+dashes).
+				// typo at the source. Accept either a uuid or a slug-shaped
+				// code (`package_types.code`); anything else gets dropped.
 				error_log(
 					sprintf(
 						'[lalia-stripe-package-id] product %d has malformed _lalia_package_id %s; not forwarding',
@@ -109,34 +110,41 @@ if ( ! class_exists( 'LaliaStripePackageId' ) ) {
 			return $metadata;
 		}
 
-		/** Product-edit UI: text input for the LALIA package UUID. */
+		/** Product-edit UI: text input for the LALIA package type identifier. */
 		public function render_product_field() {
 			woocommerce_wp_text_input(
 				array(
 					'id'          => self::PRODUCT_META_KEY,
-					'label'       => __( 'LALIA package id', 'lalia' ),
+					'label'       => __( 'LALIA package type', 'lalia' ),
 					'desc_tip'    => true,
-					'description' => __( 'UUID of the LALIA package this product maps to. Forwarded to Stripe as pi.metadata.package_id so the ERP can credit the right package on purchase.', 'lalia' ),
-					'placeholder' => '00000000-0000-0000-0000-000000000000',
+					'description' => __( "Slug `code` (e.g. `gpa-30`) or UUID of the LALIA package_types row this product maps to. Forwarded to Stripe as pi.metadata.package_id so the ERP can credit the right package on purchase. Manage codes under LALIA Settings → Package Types.", 'lalia' ),
+					'placeholder' => 'gpa-30',
 				)
 			);
 		}
 
-		/** Persist the LALIA package id on product save. Empty string clears the mapping. */
+		/** Persist the LALIA package type identifier on product save. Empty string clears the mapping. */
 		public function save_product_field( $product ) {
 			if ( ! isset( $_POST[ self::PRODUCT_META_KEY ] ) ) {
 				return;
 			}
 			$raw = sanitize_text_field( wp_unslash( $_POST[ self::PRODUCT_META_KEY ] ) );
-			if ( $raw === '' || $this->is_uuid( $raw ) ) {
+			if ( $raw === '' || $this->is_valid_identifier( $raw ) ) {
 				$product->update_meta_data( self::PRODUCT_META_KEY, $raw );
 			}
 		}
 
-		private function is_uuid( $value ) {
-			return is_string( $value ) && (bool) preg_match(
-				'/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
-				$value
+		/** Accepts either a UUID (package_types.id) or a slug code (package_types.code). */
+		private function is_valid_identifier( $value ) {
+			return is_string( $value ) && (
+				(bool) preg_match(
+					'/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+					$value
+				)
+				|| (bool) preg_match(
+					'/^[a-z0-9][a-z0-9_-]*$/',
+					$value
+				)
 			);
 		}
 	}
