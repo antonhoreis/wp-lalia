@@ -32,10 +32,15 @@ if ( ! class_exists( 'LaliaStripePackageId' ) ) {
 		const PRODUCT_META_KEY = '_lalia_package_id';
 
 		public function __construct() {
-			add_action( 'plugins_loaded', array( $this, 'init' ) );
-		}
-
-		public function init() {
+			// We're instantiated from Lalia_Plugin::bootstrap(), which
+			// itself runs on `plugins_loaded`. By the time bootstrap
+			// fires, every active plugin's main file has already been
+			// loaded (WordPress loads all plugin files BEFORE firing
+			// `plugins_loaded`), so WooCommerce's class is defined here.
+			// Register hooks directly — adding another `plugins_loaded`
+			// callback from within `plugins_loaded` is the footgun that
+			// previously left the field unrendered on the product edit
+			// screen (incident 2026-05-21).
 			if ( ! class_exists( 'WooCommerce' ) ) {
 				return;
 			}
