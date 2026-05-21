@@ -45,8 +45,26 @@ if ( ! class_exists( 'LaliaStripePackageId' ) ) {
 				return;
 			}
 
+			// The WooCommerce Stripe Gateway plugin uses two different
+			// metadata filters depending on which payment flow runs:
+			//   * `wc_stripe_intent_metadata` — UPE / modern PaymentIntent
+			//     flow (see class-wc-stripe-upe-payment-gateway.php:2178
+			//     in plugin v9.9.0). Fired with (metadata, order).
+			//   * `wc_stripe_payment_metadata` — legacy gateway path
+			//     (abstract-wc-stripe-payment-gateway.php:511). Fired
+			//     with (metadata, order, prepared_payment_method).
+			// Earlier wiring used `wc_stripe_payment_intent_metadata`
+			// which doesn't exist in the Stripe plugin — the filter was
+			// a silent no-op. Hook both real filters; our 2-arg callback
+			// works for both (PHP ignores extra args).
 			add_filter(
-				'wc_stripe_payment_intent_metadata',
+				'wc_stripe_intent_metadata',
+				array( $this, 'inject_package_id' ),
+				10,
+				2
+			);
+			add_filter(
+				'wc_stripe_payment_metadata',
 				array( $this, 'inject_package_id' ),
 				10,
 				2
