@@ -1,0 +1,26 @@
+/**
+ * WP SSO Plugin Admin Styles (embedded)
+ */
+.wp-sso-settings-form { max-width: 800px; margin-top: 20px; }
+.wp-sso-settings-form .form-table th { width: 200px; }
+.wp-sso-settings-form input[type="text"],
+.wp-sso-settings-form input[type="url"] { width: 100%; max-width: 400px; }
+.notice.wp-sso-config-warning { border-left-color: #ff9800; }
+.wp-sso-stats { background: #fff; border: 1px solid #ccd0d4; border-radius: 3px; padding: 20px; margin: 20px 0; }
+.wp-sso-stats h2 { margin-top: 0; font-size: 18px; }
+.wp-sso-stats p { font-size: 16px; margin: 10px 0; }
+.status-success { color: #46b450; font-weight: bold; }
+.status-failed { color: #dc3232; font-weight: bold; }
+.wp-list-table.sso-logs th:first-child, .wp-list-table.sso-logs td:first-child { width: 180px; }
+.wp-list-table.sso-logs th:nth-child(2), .wp-list-table.sso-logs td:nth-child(2) { width: 80px; }
+.wp-list-table.sso-logs th:nth-child(4), .wp-list-table.sso-logs td:nth-child(4) { width: 100px; }
+.tablenav-pages { margin: 20px 0; text-align: right; }
+.tablenav-pages .pagination-links { display: inline-block; }
+.description { font-style: italic; color: #666; }
+@media screen and (max-width: 782px) {
+  .wp-sso-settings-form .form-table th { width: auto; display: block; margin-bottom: 5px; }
+  .wp-sso-settings-form input[type="text"], .wp-sso-settings-form input[type="url"] { width: 100%; }
+  .wp-list-table.sso-logs { font-size: 12px; }
+}
+
+

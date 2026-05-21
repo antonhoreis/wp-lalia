@@ -1,0 +1,118 @@
+name: Register plugin update
+
+# Mirrors antonhoreis/user_auth's main.yml. On every push to main (or a
+# v*.*.* tag), bumps the patch version in lalia.php (both the header
+# `Version:` line and the LALIA_VERSION constant), pushes the bump with
+# [skip ci], and POSTs {plugin_slug, commit_hash, version} to the
+# wp_update cloud function. The wp_package function then serves the
+# matching ZIP when WordPress requests the update.
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*.*.*' ]
+  # Manual trigger for first-time setup and re-registration without a
+  # code change. Behaves identically to a branch push (bumps + registers).
+  workflow_dispatch: {}
+
+env:
+  # The repo is "wp-lalia" but the LALIA WP install knows the plugin as
+  # "lalia" (folder name + slug used in the Update URI). Hard-code so the
+  # slug doesn't drift if the repo is ever renamed.
+  PLUGIN_SLUG: lalia
+  PLUGIN_FILE: lalia.php
+  VERSION_CONSTANT: LALIA_VERSION
+
+jobs:
+  register-update:
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump plugin patch version (branch pushes only)
+        id: bump
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
+            FILE="${PLUGIN_FILE}"
+            if [[ ! -f "$FILE" ]]; then
+              echo "Plugin file $FILE not found" >&2
+              exit 1
+            fi
+
+            CURRENT_VERSION=$(grep -Po "^\s*\*\s*Version:\s*\K[0-9]+\.[0-9]+\.[0-9]+" "$FILE" | head -n1)
+            if [[ -z "$CURRENT_VERSION" ]]; then
+              CURRENT_VERSION=$(grep -Po "define\(\s*'${VERSION_CONSTANT}'\s*,\s*'\K[0-9]+\.[0-9]+\.[0-9]+" "$FILE" | head -n1)
+            fi
+            if [[ -z "$CURRENT_VERSION" ]]; then
+              echo "Unable to determine current version from $FILE" >&2
+              exit 1
+            fi
+
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            PATCH=$((PATCH+1))
+            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+            sed -i -E "s/^(\s*\*\s*Version:\s*)[0-9]+\.[0-9]+\.[0-9]+/\\1${NEW_VERSION}/" "$FILE"
+            sed -i -E "s/(define\(\s*'${VERSION_CONSTANT}'\s*,\s*')[0-9]+\.[0-9]+\.[0-9]+('\s*\);)/\\1${NEW_VERSION}\\2/" "$FILE"
+
+            if ! git diff --quiet -- "$FILE"; then
+              git config user.name "github-actions"
+              git config user.email "github-actions@github.com"
+              git add "$FILE"
+              git commit -m "chore: bump plugin version to ${NEW_VERSION} [skip ci]"
+              git push
+            fi
+
+            echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare payload
+        id: prep
+        env:
+          BUMP_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            COMMIT_HASH="${GITHUB_SHA}"
+          else
+            if [[ -n "${BUMP_VERSION}" ]]; then
+              VERSION="${BUMP_VERSION}"
+            else
+              VERSION=$(grep -Po "^\s*\*\s*Version:\s*\K[0-9]+\.[0-9]+\.[0-9]+" "${PLUGIN_FILE}" | head -n1)
+              if [[ -z "$VERSION" ]]; then
+                VERSION=$(grep -Po "define\(\s*'${VERSION_CONSTANT}'\s*,\s*'\K[0-9]+\.[0-9]+\.[0-9]+" "${PLUGIN_FILE}" | head -n1)
+              fi
+            fi
+            COMMIT_HASH="$(git rev-parse HEAD)"
+          fi
+
+          echo "plugin_slug=${PLUGIN_SLUG}" >> "$GITHUB_OUTPUT"
+          echo "commit_hash=${COMMIT_HASH}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Register update with server
+        env:
+          WP_UPDATE_URL: ${{ secrets.WP_UPDATE_URL }}
+          WP_UPDATE_API_KEY: ${{ secrets.WP_UPDATE_API_KEY }}
+          PLUGIN_SLUG: ${{ steps.prep.outputs.plugin_slug }}
+          COMMIT_HASH: ${{ steps.prep.outputs.commit_hash }}
+          VERSION: ${{ steps.prep.outputs.version }}
+        run: |
+          if [[ -z "${WP_UPDATE_URL}" || -z "${WP_UPDATE_API_KEY}" ]]; then
+            echo "Missing WP_UPDATE_URL or WP_UPDATE_API_KEY secrets" >&2
+            exit 1
+          fi
+          BODY="{\"plugin_slug\":\"${PLUGIN_SLUG}\",\"commit_hash\":\"${COMMIT_HASH}\"}"
+          if [[ -n "${VERSION}" ]]; then
+            BODY="{\"plugin_slug\":\"${PLUGIN_SLUG}\",\"commit_hash\":\"${COMMIT_HASH}\",\"version\":\"${VERSION}\"}"
+          fi
+          curl -sS -X POST "${WP_UPDATE_URL}" \
+            -H "Content-Type: application/json" \
+            -H "X-API-KEY: ${WP_UPDATE_API_KEY}" \
+            -d "${BODY}" | jq '.'
