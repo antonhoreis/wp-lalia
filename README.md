@@ -57,16 +57,9 @@ The repo needs both secrets set before the registration step succeeds:
 | `WP_UPDATE_URL` | Full URL of the wp_update cloud function (`https://europe-west3-horeis.cloudfunctions.net/wp_update`) |
 | `WP_UPDATE_API_KEY` | API key for the registration POST (same value as on `antonhoreis/user_auth`) |
 
-### Required `wp-config.php` constant on the live WordPress site
+### WP-side authorization (IP allowlist)
 
-The wp_update cloud function also requires `X-API-KEY` on the GET endpoint that WP hits when it checks for updates. Without it the function returns 401 and WP shows no available update. Define the same key in `wp-config.php` on the live install:
-
-```php
-// wp-config.php — same key as the WP_UPDATE_API_KEY GitHub Actions secret
-define( 'LALIA_WP_UPDATE_API_KEY', 'wrn82tz…(actual key)…' );
-```
-
-The plugin checks `LALIA_WP_UPDATE_API_KEY` first, then falls back to `WP_UPDATE_API_KEY`, so a single shared constant can drive both this plugin and `user_auth` (once user_auth's plugin code is updated the same way). If neither constant is defined the plugin skips the update check entirely (no error, just no update notice).
+The `wp_update` cloud function authorizes the WP-side GET via a Redis-backed IP allowlist (see `_is_authorized` in `wp_update/main.py`). The plugin doesn't carry the API key in its source — the live WordPress install's outbound IP is in the allowlist, and that's how the update check completes. If you move the WP install to a new host, add its outbound IP to the allowlist (`wp:allowed_ips` Redis key) or the update check will silently return "no update".
 
 ## Local development
 

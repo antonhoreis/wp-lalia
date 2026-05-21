@@ -323,25 +323,11 @@ function lalia_plugin_update_handler( $update_info, $plugin_headers, $plugin_fil
 	if ( empty( $plugin_headers['UpdateURI'] ) ) {
 		return $update_info;
 	}
-
-	// The wp_update cloud function requires X-API-KEY on every request,
-	// including the GET that this filter fires. Read the key from a
-	// wp-config.php constant so the secret stays out of this plugin's
-	// public source. Two constants are supported in priority order so the
-	// admin can either share one key with user_auth (WP_UPDATE_API_KEY)
-	// or set a lalia-specific one (LALIA_WP_UPDATE_API_KEY).
-	$api_key = '';
-	if ( defined( 'LALIA_WP_UPDATE_API_KEY' ) && LALIA_WP_UPDATE_API_KEY ) {
-		$api_key = (string) LALIA_WP_UPDATE_API_KEY;
-	} elseif ( defined( 'WP_UPDATE_API_KEY' ) && WP_UPDATE_API_KEY ) {
-		$api_key = (string) WP_UPDATE_API_KEY;
-	}
-	if ( '' === $api_key ) {
-		// No key → request will 401; skip the call entirely so the WP
-		// update check returns "no update" instead of a noisy error.
-		return $update_info;
-	}
-
+	// The wp_update cloud function authorizes WP-side reads via IP
+	// allowlist (per the Redis-backed allowlist in the function), so the
+	// GET below carries no API key — same pattern as user_auth's update
+	// handler. If you ever host the WP install at a new IP, add it to
+	// the allowlist or this filter will silently return "no update".
 	$request = wp_remote_get(
 		$plugin_headers['UpdateURI'],
 		array(
@@ -349,7 +335,6 @@ function lalia_plugin_update_handler( $update_info, $plugin_headers, $plugin_fil
 			'headers' => array(
 				'Accept'     => 'application/json',
 				'User-Agent' => 'WordPress/' . get_bloginfo( 'version' ) . '; ' . home_url( '/' ),
-				'X-API-KEY'  => $api_key,
 			),
 		)
 	);

@@ -18,8 +18,11 @@ on:
 env:
   # The repo is "wp-lalia" but the LALIA WP install knows the plugin as
   # "lalia" (folder name + slug used in the Update URI). Hard-code so the
-  # slug doesn't drift if the repo is ever renamed.
+  # slug doesn't drift if the repo is ever renamed. PLUGIN_REPO tells the
+  # wp_update server which GitHub repo wp_package should fetch from when
+  # the slug differs from the repo name.
   PLUGIN_SLUG: lalia
+  PLUGIN_REPO: wp-lalia
   PLUGIN_FILE: lalia.php
   VERSION_CONSTANT: LALIA_VERSION
 
@@ -108,10 +111,15 @@ jobs:
             echo "Missing WP_UPDATE_URL or WP_UPDATE_API_KEY secrets" >&2
             exit 1
           fi
-          BODY="{\"plugin_slug\":\"${PLUGIN_SLUG}\",\"commit_hash\":\"${COMMIT_HASH}\"}"
-          if [[ -n "${VERSION}" ]]; then
-            BODY="{\"plugin_slug\":\"${PLUGIN_SLUG}\",\"commit_hash\":\"${COMMIT_HASH}\",\"version\":\"${VERSION}\"}"
-          fi
+          # Always send `repo` so wp_package fetches from the correct
+          # GitHub repo. `version` is included whenever we have one.
+          BODY=$(jq -nc \
+            --arg slug "${PLUGIN_SLUG}" \
+            --arg commit "${COMMIT_HASH}" \
+            --arg repo "${PLUGIN_REPO}" \
+            --arg version "${VERSION}" \
+            '{plugin_slug:$slug, commit_hash:$commit, repo:$repo}
+             + ( if $version != "" then {version:$version} else {} end )')
           curl -sS -X POST "${WP_UPDATE_URL}" \
             -H "Content-Type: application/json" \
             -H "X-API-KEY: ${WP_UPDATE_API_KEY}" \
