@@ -57,6 +57,17 @@ The repo needs both secrets set before the registration step succeeds:
 | `WP_UPDATE_URL` | Full URL of the wp_update cloud function (`https://europe-west3-horeis.cloudfunctions.net/wp_update`) |
 | `WP_UPDATE_API_KEY` | API key for the registration POST (same value as on `antonhoreis/user_auth`) |
 
+### Required `wp-config.php` constant on the live WordPress site
+
+The wp_update cloud function also requires `X-API-KEY` on the GET endpoint that WP hits when it checks for updates. Without it the function returns 401 and WP shows no available update. Define the same key in `wp-config.php` on the live install:
+
+```php
+// wp-config.php — same key as the WP_UPDATE_API_KEY GitHub Actions secret
+define( 'LALIA_WP_UPDATE_API_KEY', 'wrn82tz…(actual key)…' );
+```
+
+The plugin checks `LALIA_WP_UPDATE_API_KEY` first, then falls back to `WP_UPDATE_API_KEY`, so a single shared constant can drive both this plugin and `user_auth` (once user_auth's plugin code is updated the same way). If neither constant is defined the plugin skips the update check entirely (no error, just no update notice).
+
 ## Local development
 
 Edits are made inside the parent `lalia-wp` repo as a submodule:
