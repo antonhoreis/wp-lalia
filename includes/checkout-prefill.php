@@ -241,10 +241,12 @@ class Lalia_Checkout_Prefill {
 			return;
 		}
 		$code = $data['coupon'];
-		if ( ! wc_get_coupon_id_by_code( $code ) ) {
+		// In-memory check first — skips the coupon lookup on every re-render
+		// after the first successful apply.
+		if ( WC()->cart->has_discount( $code ) ) {
 			return;
 		}
-		if ( WC()->cart->has_discount( $code ) ) {
+		if ( ! wc_get_coupon_id_by_code( $code ) ) {
 			return;
 		}
 		WC()->cart->apply_coupon( $code );
@@ -253,6 +255,10 @@ class Lalia_Checkout_Prefill {
 	/**
 	 * Drop the payload once an order is placed so a later, unrelated checkout
 	 * in the same browser is not prefilled with stale customer data.
+	 *
+	 * NOTE: hooked on woocommerce_checkout_order_processed (classic checkout).
+	 * If this site ever moves to the WooCommerce Blocks checkout, also hook
+	 * woocommerce_store_api_checkout_order_processed or payloads will outlive orders.
 	 */
 	public static function clear_session_payload() {
 		if ( function_exists( 'WC' ) && WC()->session ) {
