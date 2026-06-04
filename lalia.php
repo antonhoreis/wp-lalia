@@ -98,6 +98,7 @@ class Lalia_Plugin {
 	public function bootstrap() {
 		$lalia_enable_sso = get_option( 'lalia_enable_sso', 'yes' ) === 'yes';
 		$lalia_enable_cart = get_option( 'lalia_enable_single_item_cart', 'yes' ) === 'yes';
+		$lalia_enable_prefill = get_option( 'lalia_enable_checkout_prefill', 'yes' ) === 'yes';
 
 		// Start SSO components if enabled.
 		if ( $lalia_enable_sso && class_exists( 'WP_SSO_Handler' ) ) {
@@ -121,6 +122,14 @@ class Lalia_Plugin {
 				require_once $sic_file;
 			}
 		}
+		// Load Checkout Prefill module if enabled.
+		if ( $lalia_enable_prefill ) {
+			$prefill_file = LALIA_PLUGIN_DIR . 'includes/checkout-prefill.php';
+			if ( file_exists( $prefill_file ) && ! class_exists( 'Lalia_Checkout_Prefill' ) ) {
+				require_once $prefill_file;
+				Lalia_Checkout_Prefill::init();
+			}
+		}
 		// Stripe → LALIA package_id injector (WC product meta → PI metadata).
 		$lalia_enable_pkg_id = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		if ( $lalia_enable_pkg_id ) {
@@ -142,6 +151,8 @@ class Lalia_Plugin {
 		// Default module toggles if not present
 		add_option( 'lalia_enable_sso', 'yes' );
 		add_option( 'lalia_enable_single_item_cart', 'yes' );
+		add_option( 'lalia_enable_checkout_prefill', 'yes' );
+		add_option( 'lalia_prefill_secret', '' );
 		add_option( 'lalia_enable_stripe_package_id', 'yes' );
 		// Deactivate old standalone plugins if active.
 		if ( function_exists( 'deactivate_plugins' ) ) {
