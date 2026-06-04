@@ -353,7 +353,9 @@ class Lalia_Plugin {
 			wp_die( 'Forbidden' );
 		}
 		check_admin_referer( 'lalia_save_prefill_secret' );
-		$secret = isset( $_POST['lalia_prefill_secret'] ) ? sanitize_text_field( wp_unslash( $_POST['lalia_prefill_secret'] ) ) : '';
+		// trim+unslash only — sanitize_text_field strips control/unicode chars and
+		// would silently corrupt unusual secrets; the value is never echoed anywhere.
+		$secret = isset( $_POST['lalia_prefill_secret'] ) ? trim( wp_unslash( $_POST['lalia_prefill_secret'] ) ) : '';
 		// Empty submission leaves the existing secret unchanged (the field is write-only).
 		if ( '' !== $secret ) {
 			update_option( 'lalia_prefill_secret', $secret );
