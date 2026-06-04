@@ -9,6 +9,10 @@ if ( ! defined( 'WP_CLI' ) ) {
 	exit( 1 );
 }
 
+// wp eval-file runs this file inside a function scope — bind to the true
+// globals so lalia_check()'s `global` statements see the same counters.
+global $failures, $checks;
+
 $failures = 0;
 $checks   = 0;
 function lalia_check( $label, $cond ) {
