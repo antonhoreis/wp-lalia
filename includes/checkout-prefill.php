@@ -147,12 +147,25 @@ class Lalia_Checkout_Prefill {
 			return;
 		}
 
-		$token  = sanitize_text_field( wp_unslash( $_GET['prefill'] ) );
+		// Narrow charset filter instead of sanitize_text_field (which strips
+		// %XX sequences and could silently truncate a token); HMAC verification
+		// immediately follows, so this is purely defensive input hygiene.
+		$token = preg_replace( '/[^A-Za-z0-9._\-=]/', '', wp_unslash( $_GET['prefill'] ) );
+
+		// Reject oversized inputs before doing HMAC work — a real JWT here is ~0.5 KB.
+		if ( strlen( $token ) > 4096 ) {
+			self::log( 'Token rejected: oversized (' . strlen( $token ) . ' bytes)' );
+			wp_safe_redirect( remove_query_arg( array( 'prefill', 'add-to-cart', 'quantity' ) ) );
+			exit;
+		}
+
 		$result = self::verify_token( $token );
 
 		if ( is_wp_error( $result ) ) {
 			self::log( 'Token rejected: ' . $result->get_error_message() );
-		} elseif ( ( ! empty( $result['billing'] ) || '' !== $result['coupon'] ) && WC()->session ) {
+		} elseif ( ! WC()->session ) {
+			self::log( 'Token valid but WC session unavailable — payload dropped.' );
+		} elseif ( ! empty( $result['billing'] ) || '' !== $result['coupon'] ) {
 			// Guests may not have a session cookie yet — force one so the payload persists.
 			WC()->session->set_customer_session_cookie( true );
 			WC()->session->set( self::SESSION_KEY, $result );
@@ -171,6 +184,9 @@ class Lalia_Checkout_Prefill {
 	 * payment links. Carry the token to the checkout URL so
 	 * maybe_redeem_token() can redeem it on the follow-up request.
 	 *
+	 * Intentionally redirects to the checkout URL (ignoring $url) — the token
+	 * must land on the checkout page for maybe_redeem_token() to consume it.
+	 *
 	 * @param string|false $url Redirect URL from WooCommerce (false = use default).
 	 * @return string|false
 	 */
@@ -178,7 +194,7 @@ class Lalia_Checkout_Prefill {
 		if ( ! isset( $_GET['prefill'] ) || '' === get_option( 'lalia_prefill_secret', '' ) ) {
 			return $url;
 		}
-		$token = sanitize_text_field( wp_unslash( $_GET['prefill'] ) );
+		$token = preg_replace( '/[^A-Za-z0-9._\-=]/', '', wp_unslash( $_GET['prefill'] ) );
 		if ( '' === $token ) {
 			return $url;
 		}
