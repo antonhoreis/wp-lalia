@@ -55,7 +55,10 @@ class Lalia_Checkout_Prefill {
 			// Key pins the algorithm to HS256 — the token header's alg is never trusted.
 			$decoded = \Firebase\JWT\JWT::decode( $jwt, new \Firebase\JWT\Key( $secret, 'HS256' ) );
 		} catch ( \Exception $e ) {
-			return new WP_Error( 'lalia_prefill_invalid', $e->getMessage() );
+			// Log the library detail internally; callers get an opaque message
+			// so JWT internals can never leak toward user-facing output.
+			self::log( 'JWT decode failed: ' . $e->getMessage() );
+			return new WP_Error( 'lalia_prefill_invalid', 'Invalid or expired token' );
 		}
 		// JWT::decode only enforces exp when present; the contract requires it.
 		if ( ! isset( $decoded->exp ) ) {
@@ -71,7 +74,7 @@ class Lalia_Checkout_Prefill {
 	 * @param array $payload Decoded JWT claims.
 	 * @return array array{billing: array<string,string>, coupon: string}
 	 */
-	public static function sanitize_payload( array $payload ) {
+	protected static function sanitize_payload( array $payload ) {
 		$clean   = array(
 			'billing' => array(),
 			'coupon'  => '',
