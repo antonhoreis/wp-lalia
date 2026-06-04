@@ -84,3 +84,24 @@ Pushing a `v*.*.*` tag skips the auto patch bump and registers the tag's version
 ## License
 
 Same as the parent lalia-system repo.
+
+## Module: Checkout Prefill (payment links)
+
+Redeems signed payment links of the form
+`/checkout/?add-to-cart=<product_id>&prefill=<JWT>`:
+verifies the HS256 JWT, prefills all billing fields from its payload,
+auto-applies an optional coupon, and redirects to a clean `/checkout/`
+URL so the token never reaches browser history or analytics.
+
+- Toggle: WP Admin → Lalia → "Checkout Prefill" (`lalia_enable_checkout_prefill`)
+- Shared secret: WP Admin → Lalia → "Checkout Prefill Configuration" (`lalia_prefill_secret`).
+  Empty secret = module inert.
+- Token contract & external generator examples (n8n/Python): see
+  `docs/superpowers/specs/2026-06-04-checkout-prefill-links-design.md` in the
+  `lalia-system` repo ("Generating Tokens from External Apps").
+- Expired/invalid tokens degrade gracefully: product checkout still works, form just isn't prefilled.
+- Logged-in users: token data overrides saved billing data (user_auth prefill).
+- Note: works with `woocommerce_cart_redirect_after_add=yes` — the module carries the
+  token through WooCommerce's add-to-cart redirect (`woocommerce_add_to_cart_redirect` filter).
+- Dev utilities: `bin/make-prefill-token.php` (mint links), `bin/test-prefill.php`
+  (13-check assertion suite) — both via `wp eval-file`.
