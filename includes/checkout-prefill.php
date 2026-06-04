@@ -37,6 +37,8 @@ class Lalia_Checkout_Prefill {
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_redeem_token' ), 5 );
 		add_filter( 'woocommerce_add_to_cart_redirect', array( __CLASS__, 'preserve_prefill_on_add_to_cart_redirect' ) );
 		add_filter( 'woocommerce_checkout_get_value', array( __CLASS__, 'prefill_value' ), 20, 2 );
+		add_action( 'woocommerce_before_checkout_form', array( __CLASS__, 'maybe_apply_coupon' ), 5 );
+		add_action( 'woocommerce_checkout_order_processed', array( __CLASS__, 'clear_session_payload' ) );
 	}
 
 	/**
@@ -225,6 +227,37 @@ class Lalia_Checkout_Prefill {
 			return $data['billing'][ $key ];
 		}
 		return $value;
+	}
+
+	/**
+	 * Apply the token's coupon on each checkout view while the payload exists.
+	 * Idempotent; survives the single-item-cart module emptying the cart
+	 * (which clears coupons) when the customer switches products.
+	 * Nonexistent codes are skipped silently (no customer-facing notice).
+	 */
+	public static function maybe_apply_coupon() {
+		$data = self::get_session_payload();
+		if ( null === $data || '' === $data['coupon'] || ! WC()->cart || WC()->cart->is_empty() ) {
+			return;
+		}
+		$code = $data['coupon'];
+		if ( ! wc_get_coupon_id_by_code( $code ) ) {
+			return;
+		}
+		if ( WC()->cart->has_discount( $code ) ) {
+			return;
+		}
+		WC()->cart->apply_coupon( $code );
+	}
+
+	/**
+	 * Drop the payload once an order is placed so a later, unrelated checkout
+	 * in the same browser is not prefilled with stale customer data.
+	 */
+	public static function clear_session_payload() {
+		if ( function_exists( 'WC' ) && WC()->session ) {
+			WC()->session->set( self::SESSION_KEY, null );
+		}
 	}
 
 	/**
