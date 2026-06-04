@@ -91,6 +91,7 @@ class Lalia_Plugin {
 		add_action( 'plugins_loaded', array( $this, 'bootstrap' ) );
 		add_action( 'admin_menu', array( $this, 'register_admin_menu' ) );
 		add_action( 'admin_post_lalia_toggle_module', array( $this, 'handle_toggle_module' ) );
+		add_action( 'admin_post_lalia_save_prefill_secret', array( $this, 'handle_save_prefill_secret' ) );
 		register_activation_hook( LALIA_PLUGIN_FILE, array( $this, 'on_activate' ) );
 		register_deactivation_hook( LALIA_PLUGIN_FILE, array( $this, 'on_deactivate' ) );
 	}
@@ -220,6 +221,8 @@ class Lalia_Plugin {
 	public function render_overview_page() {
 		$cart_enabled = get_option( 'lalia_enable_single_item_cart', 'yes' ) === 'yes';
 		$sso_enabled = get_option( 'lalia_enable_sso', 'yes' ) === 'yes';
+		$prefill_enabled = get_option( 'lalia_enable_checkout_prefill', 'yes' ) === 'yes';
+		$prefill_secret_set = '' !== get_option( 'lalia_prefill_secret', '' );
 		$pkg_id_enabled = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		$has_wc_single_item_cart = $cart_enabled && class_exists( 'WCSingleItemCart' );
 		$sso_status = ( $sso_enabled && class_exists( 'WP_SSO_Handler' ) ) ? WP_SSO_Handler::validate_configuration() : new WP_Error( 'disabled', 'WP SSO is disabled' );
@@ -255,6 +258,17 @@ class Lalia_Plugin {
 					</form>
 				</li>
 				<li>
+					<strong>Checkout Prefill</strong>: Prefill checkout from signed payment links (<code>?prefill=&lt;JWT&gt;</code>).
+					Status: <?php echo $prefill_enabled ? '<span style="color:#46b450;">Enabled</span>' : '<span style="color:#dc3232;">Disabled</span>'; ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px;">
+						<?php wp_nonce_field( 'lalia_toggle_module' ); ?>
+						<input type="hidden" name="action" value="lalia_toggle_module" />
+						<input type="hidden" name="module" value="prefill" />
+						<input type="hidden" name="state" value="<?php echo $prefill_enabled ? 'disable' : 'enable'; ?>" />
+						<input type="submit" class="button" value="<?php echo $prefill_enabled ? 'Disable' : 'Enable'; ?>" />
+					</form>
+				</li>
+				<li>
 					<strong>Stripe package_id injector</strong>: copy each WC product's <code>_lalia_package_id</code> custom field into Stripe PaymentIntent metadata so LALIA ERP can credit the right package on purchase.
 					Status: <?php echo $pkg_id_enabled ? '<span style=\"color:#46b450;\">Enabled</span>' : '<span style=\"color:#dc3232;\">Disabled</span>'; ?>
 					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px;">
@@ -277,6 +291,22 @@ class Lalia_Plugin {
 				<a class="button button-primary" href="<?php echo esc_url( admin_url( 'admin.php?page=wp-sso-settings' ) ); ?>">Configure SSO</a>
 				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=wp-sso-settings-logs' ) ); ?>">View SSO Logs</a>
 			</p>
+			<hr />
+			<h2>Checkout Prefill Configuration</h2>
+			<?php if ( ! $prefill_secret_set ) : ?>
+				<div class="notice notice-warning"><p>No prefill secret set — the module is inert until one is configured.</p></div>
+			<?php else : ?>
+				<div class="notice notice-success"><p>Prefill secret is set.</p></div>
+			<?php endif; ?>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'lalia_save_prefill_secret' ); ?>
+				<input type="hidden" name="action" value="lalia_save_prefill_secret" />
+				<p>
+					<label for="lalia_prefill_secret">Shared secret (HS256) — must match the link generator (n8n/HubSpot):</label><br />
+					<input type="password" id="lalia_prefill_secret" name="lalia_prefill_secret" value="" autocomplete="new-password" class="regular-text" placeholder="<?php echo $prefill_secret_set ? '•••••••• (unchanged if left empty)' : 'Enter secret'; ?>" />
+				</p>
+				<p><input type="submit" class="button button-primary" value="Save Secret" /></p>
+			</form>
 		</div>
 		<?php
 	}
@@ -305,11 +335,32 @@ class Lalia_Plugin {
 				update_option( 'lalia_enable_stripe_package_id', $enable ? 'yes' : 'no' );
 				$message = $enable ? 'Stripe package_id injector enabled' : 'Stripe package_id injector disabled';
 				break;
+			case 'prefill':
+				update_option( 'lalia_enable_checkout_prefill', $enable ? 'yes' : 'no' );
+				$message = $enable ? 'Checkout Prefill enabled' : 'Checkout Prefill disabled';
+				break;
 			default:
 				wp_redirect( admin_url( 'admin.php?page=lalia' ) );
 				exit;
 		}
 
+		wp_redirect( add_query_arg( array( 'page' => 'lalia', 'lalia_notice' => rawurlencode( $message ) ), admin_url( 'admin.php' ) ) );
+		exit;
+	}
+
+	public function handle_save_prefill_secret() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Forbidden' );
+		}
+		check_admin_referer( 'lalia_save_prefill_secret' );
+		$secret = isset( $_POST['lalia_prefill_secret'] ) ? sanitize_text_field( wp_unslash( $_POST['lalia_prefill_secret'] ) ) : '';
+		// Empty submission leaves the existing secret unchanged (the field is write-only).
+		if ( '' !== $secret ) {
+			update_option( 'lalia_prefill_secret', $secret );
+			$message = 'Prefill secret saved';
+		} else {
+			$message = 'Prefill secret unchanged';
+		}
 		wp_redirect( add_query_arg( array( 'page' => 'lalia', 'lalia_notice' => rawurlencode( $message ) ), admin_url( 'admin.php' ) ) );
 		exit;
 	}
