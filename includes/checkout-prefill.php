@@ -34,7 +34,7 @@ class Lalia_Checkout_Prefill {
 		if ( ! class_exists( 'WooCommerce' ) ) {
 			return;
 		}
-		// Hooks are registered incrementally across implementation tasks.
+		add_action( 'template_redirect', array( __CLASS__, 'maybe_redeem_token' ), 5 );
 	}
 
 	/**
@@ -126,6 +126,41 @@ class Lalia_Checkout_Prefill {
 		}
 
 		return $clean;
+	}
+
+	/**
+	 * On the checkout page, redeem a ?prefill= token into the WC session,
+	 * then redirect to a clean URL (token never persists in the address bar).
+	 * Runs after WooCommerce consumed ?add-to-cart= on wp_loaded, so the cart
+	 * is already populated. Invalid tokens degrade silently.
+	 */
+	public static function maybe_redeem_token() {
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_wc_endpoint_url() ) {
+			return;
+		}
+		if ( ! isset( $_GET['prefill'] ) ) {
+			return;
+		}
+		// No secret -> module is inert: leave the param alone (same as disabled).
+		if ( '' === get_option( 'lalia_prefill_secret', '' ) ) {
+			return;
+		}
+
+		$token  = sanitize_text_field( wp_unslash( $_GET['prefill'] ) );
+		$result = self::verify_token( $token );
+
+		if ( is_wp_error( $result ) ) {
+			self::log( 'Token rejected: ' . $result->get_error_message() );
+		} elseif ( ( ! empty( $result['billing'] ) || '' !== $result['coupon'] ) && WC()->session ) {
+			// Guests may not have a session cookie yet — force one so the payload persists.
+			WC()->session->set_customer_session_cookie( true );
+			WC()->session->set( self::SESSION_KEY, $result );
+		}
+
+		// Strip the token AND the consumed add-to-cart args so refreshing the
+		// clean URL neither re-verifies nor re-adds the product.
+		wp_safe_redirect( remove_query_arg( array( 'prefill', 'add-to-cart', 'quantity' ) ) );
+		exit;
 	}
 
 	/**
