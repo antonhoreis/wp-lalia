@@ -35,6 +35,7 @@ class Lalia_Checkout_Prefill {
 			return;
 		}
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_redeem_token' ), 5 );
+		add_filter( 'woocommerce_add_to_cart_redirect', array( __CLASS__, 'preserve_prefill_on_add_to_cart_redirect' ) );
 	}
 
 	/**
@@ -161,6 +162,27 @@ class Lalia_Checkout_Prefill {
 		// clean URL neither re-verifies nor re-adds the product.
 		wp_safe_redirect( remove_query_arg( array( 'prefill', 'add-to-cart', 'quantity' ) ) );
 		exit;
+	}
+
+	/**
+	 * WooCommerce's add-to-cart handler redirects on wp_loaded (before
+	 * template_redirect) when woocommerce_cart_redirect_after_add=yes,
+	 * dropping all query args — which would lose the ?prefill= token on
+	 * payment links. Carry the token to the checkout URL so
+	 * maybe_redeem_token() can redeem it on the follow-up request.
+	 *
+	 * @param string|false $url Redirect URL from WooCommerce (false = use default).
+	 * @return string|false
+	 */
+	public static function preserve_prefill_on_add_to_cart_redirect( $url ) {
+		if ( ! isset( $_GET['prefill'] ) || '' === get_option( 'lalia_prefill_secret', '' ) ) {
+			return $url;
+		}
+		$token = sanitize_text_field( wp_unslash( $_GET['prefill'] ) );
+		if ( '' === $token ) {
+			return $url;
+		}
+		return add_query_arg( 'prefill', $token, wc_get_checkout_url() );
 	}
 
 	/**
