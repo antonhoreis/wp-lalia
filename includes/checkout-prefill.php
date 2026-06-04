@@ -36,6 +36,7 @@ class Lalia_Checkout_Prefill {
 		}
 		add_action( 'template_redirect', array( __CLASS__, 'maybe_redeem_token' ), 5 );
 		add_filter( 'woocommerce_add_to_cart_redirect', array( __CLASS__, 'preserve_prefill_on_add_to_cart_redirect' ) );
+		add_filter( 'woocommerce_checkout_get_value', array( __CLASS__, 'prefill_value' ), 20, 2 );
 	}
 
 	/**
@@ -199,6 +200,31 @@ class Lalia_Checkout_Prefill {
 			return $url;
 		}
 		return add_query_arg( 'prefill', $token, wc_get_checkout_url() );
+	}
+
+	/**
+	 * Feed redeemed token values into checkout fields.
+	 * Returning non-null from this filter short-circuits WC_Checkout::get_value(),
+	 * so token data wins over customer/user-meta data and over the user_auth
+	 * plugin's field defaults (per spec: SDR data is fresher).
+	 *
+	 * @param mixed  $value Existing value (null unless another filter set it).
+	 * @param string $input Field key, e.g. 'billing_email'.
+	 * @return mixed
+	 */
+	public static function prefill_value( $value, $input ) {
+		if ( ! is_string( $input ) || 0 !== strpos( $input, 'billing_' ) ) {
+			return $value;
+		}
+		$data = self::get_session_payload();
+		if ( null === $data ) {
+			return $value;
+		}
+		$key = substr( $input, strlen( 'billing_' ) );
+		if ( isset( $data['billing'][ $key ] ) && '' !== $data['billing'][ $key ] ) {
+			return $data['billing'][ $key ];
+		}
+		return $value;
 	}
 
 	/**
