@@ -21,6 +21,7 @@ The plugin has three independently toggleable modules. Each stores its on/off st
 | `lalia_enable_sso` | `'yes'` | JWT-based single sign-on to the LALIA learning platform |
 | `lalia_enable_single_item_cart` | `'yes'` | WooCommerce cart restriction (one product, qty 1) |
 | `lalia_enable_stripe_package_id` | `'yes'` | Copy each WC product's `_lalia_package_id` post meta into Stripe PaymentIntent metadata at checkout, so the LALIA ERP `stripe-sales-event-worker` can attribute the purchase to the right LALIA package |
+| `lalia_enable_course_schedule` | `'yes'` | `[lalia_course_schedule]` — renders upcoming courses read live from the LALIA ERP |
 
 ### SSO module
 
@@ -37,6 +38,89 @@ The plugin has three independently toggleable modules. Each stores its on/off st
 Per-product setup: WP Admin → Products → edit each LALIA-mapped product → **LALIA package id** field (added by this module to the General product data tab) → paste the LALIA `public.packages.id` UUID. Single-package carts only — multi-item orders log a notice and take the first line item's value.
 
 UUID-validated on save and at filter time; malformed values fail closed (log + don't forward).
+
+### Course schedule module
+
+`includes/course-schedule.php` (class `Lalia_Course_Schedule`) — registers the
+`[lalia_course_schedule]` shortcode. It renders the schedule card designed in the Claude Design
+project *Lalia Course Schedule Mockups* (options 3a and 3b), driven by the LALIA ERP's public
+endpoint:
+
+```
+GET https://api.lalia-berlin.com/functions/v1/public-course-schedule?days=60
+```
+
+Unauthenticated by design. The contract, the seat-disclosure mask and the weekday fallback are
+documented in **lalia-erp** `docs/developers/public-course-schedule-api.mdx`.
+
+| Attribute | Default | Meaning |
+|-----------|---------|---------|
+| `level` | *(empty)* | Level abbreviation or name (`N3`, `Novice 3`), comma separated for several. Empty renders every level. |
+| `layout` | `auto` | `single` drops the Level column and lets the heading name the level (design 3a); `all` keeps it (3b). `auto` picks `single` when `level` resolves to one level. |
+| `per_level` | `auto` | `all` lists every start; `first` keeps only each level's next start. `auto` means `all` for one level, `first` across levels — so 3a lists a level's upcoming starts and 3b lists one row per level, as the mockups show. |
+| `days` | `60` | Window passed to the endpoint, clamped 1–365. |
+| `limit` | `0` | Maximum rows; `0` is no limit. Worth setting on the all-levels card — a 60-day window currently holds 17 levels. |
+| `title` | *derived* | `"Novice 3 — upcoming courses"` / `"Upcoming courses"`. Empty omits it. |
+| `subtitle` | *derived* | `"4 times a week, 50 minutes each session"`, derived **only when every row agrees** on rhythm and lesson length — one sentence over a mixed table would be false. Empty omits it. |
+| `cta_text` | `Purchase Now` | Button label. |
+| `cta_url` | `https://lalia-berlin.com/pricing/` | Button target. Empty renders no button. |
+| `empty_text` | *(a sentence)* | Shown when nothing matches. Empty renders nothing. |
+| `variant` | `card` | `inline` drops the panel, padding, heading, sub-line and button so the table can sit inside a card that already has them. See below. |
+| `class` | *(empty)* | Extra class on the card. |
+
+Examples:
+
+```
+[lalia_course_schedule level="N3"]                  one level, every upcoming start
+[lalia_course_schedule]                             all levels, next start each
+[lalia_course_schedule limit="6" days="90"]         a 90-day window, six rows
+[lalia_course_schedule level="N3,N4,N5" title=""]   the novice levels, no heading
+```
+
+#### Inside a level card
+
+`variant="inline"` is for the level containers on `/novice-levels/`,
+`/intermediate-levels/` and `/advanced-levels/`. Each of those is already a `#F7F7F7` panel with a
+22 px radius, its own heading, a "Structure: …" line and a Purchase Now button — a second card
+nested inside would double all of it. The inline variant renders the table alone, which is what
+mockup 2a shows.
+
+Add a Shortcode widget to the level's text column, between the "Structure: …" text and the button:
+
+```
+[lalia_course_schedule level="Novice 3" variant="inline"]
+```
+
+The heading on every level container is the ERP level name verbatim — "Novice 3",
+"Intermediate Low 1", "Intermediate Mid 4", "Current Events in the German Speaking Sphere" — so the
+`level` attribute takes the heading text as-is. Abbreviations (`N3`, `IL1`, `Ad1`) work too.
+
+The column leaves roughly 700 px inside its padding (60 % of the kit's 1500 px container, less
+140 + 40), and the table needs about 515 px, so it fits without a horizontal scroll. The variant
+carries 6 px above and 12 px below to land on the mockup's 26/32 px once Elementor's 20 px
+inter-widget margin is added.
+
+A level with nothing scheduled in the window renders one muted line instead of an empty table —
+"Novice 2" is in that state today.
+
+**Caching.** Responses are held in a transient for 300 s, mirroring the endpoint's own
+`Cache-Control: max-age=300`. Each success also writes `lalia_course_schedule_last_good`; if the
+endpoint is unreachable that copy is served instead, and the retry is held off for 60 s. With no
+copy at all the shortcode renders nothing visible — never an empty table, which would read as "no
+courses are running" when the truth is "we could not ask". Failures land in the PHP error log.
+
+**Seat counts.** The endpoint publishes an exact number only at three seats or fewer, `null` above
+that. The renderer treats anything above the threshold as "say nothing" rather than printing it, so
+a contract change upstream cannot leak enrolment figures the mask was built to hide. `0` renders
+"Fully booked".
+
+**Styling.** `assets/css/course-schedule.css`, printed inline the first time a card renders rather
+than enqueued: Elementor renders widgets during `the_content`, long after `wp_enqueue_scripts`, so
+an enqueue lands in the footer and the table flashes unstyled.
+
+Elementor section templates that drop the shortcode onto a page, plus a preview harness that
+renders the real module against a captured payload, live in the parent repo at
+`lalia-wp/elementor-templates/`.
 
 ## Auto-update pipeline
 

@@ -1,0 +1,234 @@
+/* ------------------------------------------------------------------
+   LALIA course-schedule card — markup emitted by [lalia_course_schedule]
+   (includes/course-schedule.php).
+
+   Design source: Claude Design project "Lalia Course Schedule Mockups",
+   file "Course Schedule Cards.dc.html", options #3a and #3b.
+
+   Self-contained on purpose: every colour, font and metric is declared
+   here, so the block renders identically no matter which theme, kit or
+   page it is dropped on. Values are the LALIA design tokens
+   (lalia-wp/design-system/src/styles.css) resolved to literals.
+   ------------------------------------------------------------------ */
+.lsched {
+  /* Palette — mirrors --lalia-* tokens */
+  --lsched-ink: #1e293b;
+  --lsched-ink-soft: #475569;
+  --lsched-ink-faint: #64748b;
+  --lsched-cyan: #41b6e7;         /* day pill, "on" state */
+  --lsched-blue: #046bd2;         /* low-availability note */
+  --lsched-rule: #e5e9f0;         /* column hairlines */
+  --lsched-day-off: rgba(30, 41, 59, 0.07);
+  --lsched-surface: #f7f7f7;      /* card background */
+  --lsched-cta: #42b8ea;          /* matches the live "Purchase Now" button */
+  --lsched-cta-hover: #000000;
+
+  /* Type — both families are already loaded by the Elementor kit on
+     lalia-berlin.com; the stacks degrade cleanly anywhere else. */
+  --lsched-font: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --lsched-font-display: 'Urbanist', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+
+  box-sizing: border-box;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 40px 36px;
+  background: var(--lsched-surface);
+  border-radius: 22px;
+  font-family: var(--lsched-font);
+  color: var(--lsched-ink);
+}
+.lsched--all { max-width: 880px; }
+
+/* Dropped inside a card that already exists — the level containers on
+   /novice-levels/ and its siblings are themselves a #f7f7f7 panel with a
+   22px radius and their own padding, heading and CTA. The inline variant
+   contributes the table and nothing else, matching mockup 2a. The 580px
+   cap is the mockup's; the column leaves about 700px. */
+.lsched--inline {
+  max-width: 580px;
+  /* Elementor puts 20px between widgets; these make up the 26px above and
+     32px below that mockup 2a has around the table. */
+  margin: 6px 0 12px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.lsched *, .lsched *::before, .lsched *::after { box-sizing: border-box; }
+
+/* ---- Header ---- */
+.lsched__title {
+  margin: 0 0 6px;
+  font: 800 26px/1.2 var(--lsched-font-display);
+  letter-spacing: -0.01em;
+  color: var(--lsched-ink);
+}
+.lsched__subtitle {
+  margin: 0 0 28px;
+  font: 400 15.5px/1.7 var(--lsched-font);
+  color: var(--lsched-ink-soft);
+}
+/* The subtitle is dropped whenever the rows disagree on rhythm or lesson
+   length, so the gap it carries has to be made up by the title. */
+.lsched__title + .lsched__scroll,
+.lsched__title + .lsched__empty { margin-top: 22px; }
+
+/* ---- Table ----
+   A real table so rows can be added or removed without touching any
+   layout maths: the vertical hairlines are collapsed cell borders, so
+   they always span exactly as many rows as exist. The reset below is
+   deliberate — Astra and most WP themes style bare tables. */
+.lsched__scroll { overflow-x: auto; }
+.lsched__table {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  background: transparent;
+  text-align: left;
+}
+.lsched__table th,
+.lsched__table td {
+  border: 0;
+  background: transparent;
+  padding: 0 22px;
+  vertical-align: middle;
+}
+.lsched__table th:first-child,
+.lsched__table td:first-child { padding-left: 0; }
+.lsched__table th:last-child,
+.lsched__table td:last-child { padding-right: 0; }
+.lsched__table th + th,
+.lsched__table td + td { border-left: 1px solid var(--lsched-rule); }
+.lsched__table th {
+  padding-bottom: 12px;
+  font: 700 10.5px/1 var(--lsched-font);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lsched-ink-faint);
+  white-space: nowrap;
+}
+.lsched__table td { padding-top: 11px; padding-bottom: 11px; }
+
+/* ---- Cell contents ---- */
+.lsched__level {
+  display: block;
+  font: 700 17px/1.3 var(--lsched-font);
+  color: var(--lsched-ink);
+  /* Deliberately wrapping: level names run to
+     "Current Events in the German Speaking Sphere". */
+  max-width: 22ch;
+}
+.lsched__date {
+  display: block;
+  font: 700 17px/1.3 var(--lsched-font);
+  color: var(--lsched-ink);
+  white-space: nowrap;
+}
+/* With a Level column the level carries the emphasis, so the date steps back. */
+.lsched--all .lsched__date { font: 500 16px/1.3 var(--lsched-font); }
+.lsched__time {
+  display: block;
+  font: 500 15.5px/1.3 var(--lsched-font);
+  color: var(--lsched-ink-soft);
+  white-space: nowrap;
+}
+
+/* Low-availability note — show it only at or below the spots threshold. */
+.lsched__spots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font: 600 13px/1.3 var(--lsched-font);
+  color: var(--lsched-blue);
+}
+.lsched__spots::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* Sold out — same slot, drained of urgency. */
+.lsched__spots--full { color: var(--lsched-ink-faint); }
+
+/* ---- Empty state ---- */
+.lsched__empty {
+  margin: 0;
+  padding: 8px 0 4px;
+  font: 500 15.5px/1.6 var(--lsched-font);
+  color: var(--lsched-ink-soft);
+}
+
+/* ---- Day pills ---- */
+.lsched__days { display: flex; gap: 5px; }
+.lsched__day {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font: 600 12px/1 var(--lsched-font);
+  background: var(--lsched-day-off);
+  color: var(--lsched-ink-faint);
+}
+.lsched__day--on { background: var(--lsched-cyan); color: #fff; }
+
+/* ---- Call to action ---- */
+.lsched__actions { display: flex; justify-content: center; margin-top: 32px; }
+.lsched__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 33px;
+  border: 0;
+  border-radius: 1000px;
+  background: var(--lsched-cta);
+  color: #fff;
+  font-family: var(--lsched-font-display);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.7px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.lsched__cta:hover,
+.lsched__cta:focus { background: var(--lsched-cta-hover); color: #fff; text-decoration: none; }
+.lsched__cta:focus-visible { outline: 3px solid var(--lsched-blue); outline-offset: 3px; }
+
+/* ---- Stacked layout below Elementor's mobile breakpoint ----
+   Each row becomes a labelled block; the column headers are dropped
+   because every cell carries its own label via data-label. */
+@media (max-width: 767px) {
+  .lsched { padding: 26px 20px 24px; border-radius: 18px; }
+  .lsched--inline { padding: 0; border-radius: 0; }
+  .lsched__title { font-size: 22px; }
+  .lsched__subtitle { margin-bottom: 22px; }
+  .lsched__table,
+  .lsched__table tbody,
+  .lsched__table tr,
+  .lsched__table td { display: block; width: 100%; }
+  .lsched__table thead { display: none; }
+  .lsched__table tbody tr {
+    padding: 16px 0;
+    border-top: 1px solid var(--lsched-rule);
+  }
+  .lsched__table tbody tr:first-child { padding-top: 0; border-top: 0; }
+  .lsched__table td { border-left: 0; padding: 0 0 10px; }
+  .lsched__table td:last-child { padding-bottom: 0; }
+  .lsched__table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font: 700 10.5px/1 var(--lsched-font);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--lsched-ink-faint);
+  }
+  .lsched__actions { margin-top: 24px; }
+  .lsched__cta { width: 100%; }
+}

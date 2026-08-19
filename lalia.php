@@ -131,6 +131,17 @@ class Lalia_Plugin {
 				Lalia_Checkout_Prefill::init();
 			}
 		}
+		// Course schedule shortcode ([lalia_course_schedule], reads the LALIA ERP).
+		$lalia_enable_course_schedule = get_option( 'lalia_enable_course_schedule', 'yes' ) === 'yes';
+		if ( $lalia_enable_course_schedule ) {
+			$schedule_file = LALIA_PLUGIN_DIR . 'includes/course-schedule.php';
+			if ( file_exists( $schedule_file ) && ! class_exists( 'Lalia_Course_Schedule' ) ) {
+				require_once $schedule_file;
+			}
+			if ( class_exists( 'Lalia_Course_Schedule' ) ) {
+				Lalia_Course_Schedule::init();
+			}
+		}
 		// Stripe → LALIA package_id injector (WC product meta → PI metadata).
 		$lalia_enable_pkg_id = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		if ( $lalia_enable_pkg_id ) {
@@ -155,6 +166,7 @@ class Lalia_Plugin {
 		add_option( 'lalia_enable_checkout_prefill', 'yes' );
 		add_option( 'lalia_prefill_secret', '' );
 		add_option( 'lalia_enable_stripe_package_id', 'yes' );
+		add_option( 'lalia_enable_course_schedule', 'yes' );
 		// Deactivate old standalone plugins if active.
 		if ( function_exists( 'deactivate_plugins' ) ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -224,6 +236,7 @@ class Lalia_Plugin {
 		$prefill_enabled = get_option( 'lalia_enable_checkout_prefill', 'yes' ) === 'yes';
 		$prefill_secret_set = '' !== get_option( 'lalia_prefill_secret', '' );
 		$pkg_id_enabled = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
+		$schedule_enabled = get_option( 'lalia_enable_course_schedule', 'yes' ) === 'yes';
 		$has_wc_single_item_cart = $cart_enabled && class_exists( 'WCSingleItemCart' );
 		$sso_status = ( $sso_enabled && class_exists( 'WP_SSO_Handler' ) ) ? WP_SSO_Handler::validate_configuration() : new WP_Error( 'disabled', 'WP SSO is disabled' );
 		$notice = isset( $_GET['lalia_notice'] ) ? sanitize_text_field( wp_unslash( $_GET['lalia_notice'] ) ) : '';
@@ -277,6 +290,17 @@ class Lalia_Plugin {
 						<input type="hidden" name="module" value="stripe_package_id" />
 						<input type="hidden" name="state" value="<?php echo $pkg_id_enabled ? 'disable' : 'enable'; ?>" />
 						<input type="submit" class="button" value="<?php echo $pkg_id_enabled ? 'Disable' : 'Enable'; ?>" />
+					</form>
+				</li>
+				<li>
+					<strong>Course schedule</strong>: <code>[lalia_course_schedule]</code> renders upcoming courses read live from the LALIA ERP public schedule endpoint.
+					Status: <?php echo $schedule_enabled ? '<span style="color:#46b450;">Enabled</span>' : '<span style="color:#dc3232;">Disabled</span>'; ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px;">
+						<?php wp_nonce_field( 'lalia_toggle_module' ); ?>
+						<input type="hidden" name="action" value="lalia_toggle_module" />
+						<input type="hidden" name="module" value="course_schedule" />
+						<input type="hidden" name="state" value="<?php echo $schedule_enabled ? 'disable' : 'enable'; ?>" />
+						<input type="submit" class="button" value="<?php echo $schedule_enabled ? 'Disable' : 'Enable'; ?>" />
 					</form>
 				</li>
 			</ul>
@@ -334,6 +358,10 @@ class Lalia_Plugin {
 			case 'stripe_package_id':
 				update_option( 'lalia_enable_stripe_package_id', $enable ? 'yes' : 'no' );
 				$message = $enable ? 'Stripe package_id injector enabled' : 'Stripe package_id injector disabled';
+				break;
+			case 'course_schedule':
+				update_option( 'lalia_enable_course_schedule', $enable ? 'yes' : 'no' );
+				$message = $enable ? 'Course schedule enabled' : 'Course schedule disabled';
 				break;
 			case 'prefill':
 				update_option( 'lalia_enable_checkout_prefill', $enable ? 'yes' : 'no' );
