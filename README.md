@@ -58,7 +58,7 @@ documented in **lalia-erp** `docs/developers/public-course-schedule-api.mdx`.
 | `level` | *(empty)* | Level abbreviation or name (`N3`, `Novice 3`), comma separated for several. Empty renders every level. |
 | `layout` | `auto` | `single` drops the Level column and lets the heading name the level (design 3a); `all` keeps it (3b). `auto` picks `single` when `level` resolves to one level. |
 | `per_level` | `auto` | `all` lists every start; `first` keeps only each level's next start. `auto` means `all` for one level, `first` across levels — so 3a lists a level's upcoming starts and 3b lists one row per level, as the mockups show. |
-| `days` | `60` | Window passed to the endpoint, clamped 1–365. |
+| `days` | `60` | Window passed to the endpoint. Clamped here to 1–365; the endpoint then snaps it to one of 30/60/90/180/365, rounding **up**, so `days="45"` returns a 60-day window. |
 | `limit` | `0` | Maximum rows; `0` is no limit. Worth setting on the all-levels card — a 60-day window currently holds 17 levels. |
 | `title` | *derived* | `"Novice 3 — upcoming courses"` / `"Upcoming courses"`. Empty omits it. |
 | `subtitle` | *derived* | `"4 times a week, 50 minutes each session"`, derived **only when every row agrees** on rhythm and lesson length — one sentence over a mixed table would be false. Empty omits it. |
@@ -79,8 +79,8 @@ Examples:
 
 #### Inside a level card
 
-`variant="inline"` is for the level containers on `/novice-levels/`,
-`/intermediate-levels/` and `/advanced-levels/`. Each of those is already a `#F7F7F7` panel with a
+`variant="inline"` is for the level containers on `/novice-levels/`, `/intermediate-levels/`,
+`/advanced-levels/` and `/absolute-beginners/`. Each of those is already a `#F7F7F7` panel with a
 22 px radius, its own heading, a "Structure: …" line and a Purchase Now button — a second card
 nested inside would double all of it. The inline variant renders the table alone, which is what
 mockup 2a shows.
@@ -91,9 +91,11 @@ Add a Shortcode widget to the level's text column, between the "Structure: …" 
 [lalia_course_schedule level="Novice 3" variant="inline"]
 ```
 
-The heading on every level container is the ERP level name verbatim — "Novice 3",
-"Intermediate Low 1", "Intermediate Mid 4", "Current Events in the German Speaking Sphere" — so the
-`level` attribute takes the heading text as-is. Abbreviations (`N3`, `IL1`, `Ad1`) work too.
+The heading on every level container is the ERP level name — "Novice 3", "Intermediate Low 1",
+"Intermediate Mid 4", "Current Events in the German Speaking Sphere" — so the `level` attribute
+takes the heading text as-is. Matching is case-insensitive, which is why `/absolute-beginners/`
+works with its "Absolute beginners" heading against the ERP's "Absolute Beginners". Abbreviations
+(`N3`, `IL1`, `Ad1`, `AB`) work too.
 
 The column leaves roughly 700 px inside its padding (60 % of the kit's 1500 px container, less
 140 + 40), and the table needs about 515 px, so it fits without a horizontal scroll. The variant
