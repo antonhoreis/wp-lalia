@@ -83,6 +83,16 @@ class Lalia_Portal_SSO {
 		return trailingslashit( $url );
 	}
 
+	/**
+	 * Nonce'd WordPress logout URL for use from JavaScript. wp_logout_url()
+	 * returns an HTML-escaped string (`&amp;`) meant for attributes; navigating
+	 * to it verbatim hands WordPress `amp;_wpnonce` and it shows the "do you
+	 * really want to log out?" confirmation instead of logging out.
+	 */
+	public static function logout_url() {
+		return wp_specialchars_decode( wp_logout_url( home_url( '/' ) ), ENT_QUOTES );
+	}
+
 	/** scheme://host[:port] of the portal — the postMessage target/origin. */
 	public static function portal_origin() {
 		$parts = wp_parse_url( self::portal_url() );
@@ -204,8 +214,8 @@ class Lalia_Portal_SSO {
 		$portal_src = self::portal_url() . '#sso=' . rawurlencode( $token );
 		$config     = array(
 			'portalOrigin'      => self::portal_origin(),
-			'logoutUrl'         => wp_logout_url( home_url( '/' ) ),
-			'loginUrl'          => wp_login_url( self::page_url() ),
+			'logoutUrl'         => self::logout_url(),
+			'loginUrl'          => wp_specialchars_decode( wp_login_url( self::page_url() ), ENT_QUOTES ),
 			'heartbeatUrl'      => add_query_arg( 'action', self::AJAX_HEARTBEAT, admin_url( 'admin-ajax.php' ) ),
 			'heartbeatInterval' => self::HEARTBEAT_INTERVAL_MS,
 			'userId'            => (int) $user_id,

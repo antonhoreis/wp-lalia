@@ -127,6 +127,10 @@ try {
 	lalia_portal_check( 'portal_url has a trailing slash', 'https://erp.example.test/portal/' === Lalia_Portal_SSO::portal_url() );
 	lalia_portal_check( 'portal_origin is scheme://host', 'https://erp.example.test' === Lalia_Portal_SSO::portal_origin() );
 	lalia_portal_check( 'page_url is /<slug>/ under home', home_url( '/my-lalia/' ) === Lalia_Portal_SSO::page_url() );
+	wp_set_current_user( $customer );
+	$logout_url = Lalia_Portal_SSO::logout_url();
+	wp_set_current_user( 0 );
+	lalia_portal_check( 'logout_url carries a nonce and is not HTML-escaped (JS navigates to it)', false !== strpos( $logout_url, '_wpnonce=' ) && false === strpos( $logout_url, '&amp;' ) );
 	$rules = get_option( 'rewrite_rules' );
 	lalia_portal_check( 'rewrite rule for the page slug is registered', 'yes' !== $old_enabled || ( is_array( $rules ) && isset( $rules[ '^' . preg_quote( 'my-lalia', '#' ) . '/?$' ] ) ) );
 	lalia_portal_check( 'allowed roles include customer and exclude contributor', in_array( 'customer', Lalia_Portal_SSO_Token::allowed_roles(), true ) && ! in_array( 'contributor', Lalia_Portal_SSO_Token::allowed_roles(), true ) );
