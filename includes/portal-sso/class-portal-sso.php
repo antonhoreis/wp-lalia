@@ -241,9 +241,12 @@ class Lalia_Portal_SSO {
 	private function send_page_headers( $status ) {
 		status_header( $status );
 		header( 'Content-Type: text/html; charset=' . get_bloginfo( 'charset' ) );
-		// This page embeds the portal; nobody embeds this page.
+		// This page embeds the portal; nobody embeds this page. The CSP is sent
+		// as an ADDITIONAL header (replace = false): the hosts already emit a
+		// site-wide Content-Security-Policy, and browsers enforce every CSP
+		// header they receive — replacing would let the later site-wide one win.
 		header( 'X-Frame-Options: DENY' );
-		header( "Content-Security-Policy: frame-ancestors 'none'" );
+		header( "Content-Security-Policy: frame-ancestors 'none'", false );
 		header( 'X-Content-Type-Options: nosniff' );
 		header( 'X-Robots-Tag: noindex, nofollow', true );
 		header( 'Referrer-Policy: strict-origin-when-cross-origin' );
