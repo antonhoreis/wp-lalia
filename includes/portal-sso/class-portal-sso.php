@@ -112,8 +112,12 @@ class Lalia_Portal_SSO {
 	 */
 	public static function validate_configuration() {
 		$errors = array();
-		if ( '' === Lalia_Portal_SSO_Token::secret() ) {
+		$secret = Lalia_Portal_SSO_Token::secret();
+		if ( '' === $secret ) {
 			$errors[] = __( 'Portal SSO secret is not set.', 'lalia' );
+		} elseif ( strlen( $secret ) < Lalia_Portal_SSO_Token::SECRET_MIN_BYTES ) {
+			// php-jwt ≥ 6.10 refuses HS256 keys under 256 bits outright.
+			$errors[] = __( 'Portal SSO secret must be at least 32 bytes.', 'lalia' );
 		}
 		// Shape check only (no wp_http_validate_url: that resolves DNS on every
 		// call, and this runs on each page render).

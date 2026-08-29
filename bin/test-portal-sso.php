@@ -100,7 +100,7 @@ try {
 	lalia_portal_check( 'mint: exp - iat = 120 on the wire', is_array( $decoded ) && 120 === $decoded['exp'] - $decoded['iat'] );
 	$tampered = substr( $token, 0, -2 ) . 'xx';
 	lalia_portal_check( 'mint: tampered signature rejected', is_wp_error( Lalia_Portal_SSO_Token::decode( $tampered ) ) );
-	$other = \Firebase\JWT\JWT::encode( $decoded, 'some-other-secret', 'HS256' );
+	$other = \Firebase\JWT\JWT::encode( $decoded, 'some-other-secret-that-is-at-least-32-bytes-long', 'HS256' ); // php-jwt ≥6.10 enforces a 256-bit HS256 key
 	lalia_portal_check( 'mint: token signed with another secret rejected', is_wp_error( Lalia_Portal_SSO_Token::decode( $other ) ) );
 	$alg_none = rtrim( strtr( base64_encode( '{"alg":"none","typ":"JWT"}' ), '+/', '-_' ), '=' ) . '.' . explode( '.', $token )[1] . '.';
 	lalia_portal_check( 'mint: alg=none rejected', is_wp_error( Lalia_Portal_SSO_Token::decode( $alg_none ) ) );
@@ -113,6 +113,9 @@ try {
 	lalia_portal_check( 'validate_configuration flags the missing secret', is_wp_error( $cfg ) );
 	update_option( Lalia_Portal_SSO::OPTION_SECRET, $secret );
 	lalia_portal_check( 'validate_configuration passes with secret + https portal URL', true === Lalia_Portal_SSO::validate_configuration() );
+	update_option( Lalia_Portal_SSO::OPTION_SECRET, 'short' );
+	lalia_portal_check( 'validate_configuration flags a secret shorter than 32 bytes', is_wp_error( Lalia_Portal_SSO::validate_configuration() ) );
+	update_option( Lalia_Portal_SSO::OPTION_SECRET, $secret );
 
 	// --- settings sanitizers ---
 	$settings = Lalia_Portal_SSO_Settings::init();

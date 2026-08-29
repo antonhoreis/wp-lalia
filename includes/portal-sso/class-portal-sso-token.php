@@ -29,6 +29,8 @@ class Lalia_Portal_SSO_Token {
 	const TTL = 120;
 	/** Names are display fallbacks on the ERP side; keep them bounded. */
 	const NAME_MAX_LEN = 100;
+	/** HS256 needs a 256-bit key; php-jwt ≥ 6.10 throws below this. */
+	const SECRET_MIN_BYTES = 32;
 
 	/**
 	 * Roles allowed to open the portal. The WordPress gate is deliberately
