@@ -150,6 +150,15 @@ class Lalia_Portal_SSO {
 		if ( ! get_query_var( self::QUERY_VAR ) ) {
 			return;
 		}
+		// Every response here is per-user and carries a fresh token: headers
+		// for browsers/CDNs, plus the constants page caches (LiteSpeed on the
+		// Hostinger install, WP Rocket, W3TC) honour regardless of headers.
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+		if ( ! defined( 'DONOTCACHEOBJECT' ) ) {
+			define( 'DONOTCACHEOBJECT', true );
+		}
 		nocache_headers();
 		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
 
