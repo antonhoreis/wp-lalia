@@ -131,7 +131,7 @@ class Lalia_Portal_SSO_Token {
 		}
 		try {
 			return \Firebase\JWT\JWT::encode( $claims, $secret, 'HS256' );
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
 			return new WP_Error( 'sign_failed', 'Token signing failed: ' . $e->getMessage() );
 		}
 	}
@@ -148,9 +148,13 @@ class Lalia_Portal_SSO_Token {
 		if ( '' === $secret ) {
 			return new WP_Error( 'no_secret', 'Portal SSO secret is not configured.' );
 		}
+		// \Throwable, not \Exception: which php-jwt answers here depends on load
+		// order (the Hostinger AI Assistant plugin bundles its own copy and wins
+		// the class_exists race on the live hosts), and newer versions raise
+		// \Error subtypes for malformed input.
 		try {
 			$decoded = \Firebase\JWT\JWT::decode( (string) $jwt, new \Firebase\JWT\Key( $secret, 'HS256' ) );
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
 			return new WP_Error( 'invalid_token', $e->getMessage() );
 		}
 		$claims = json_decode( wp_json_encode( $decoded ), true );
