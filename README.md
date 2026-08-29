@@ -14,7 +14,7 @@ This repository is consumed as a Git submodule by [`antonhoreis/lalia-wp`](https
 
 ## Modules
 
-The plugin has three independently toggleable modules. Each stores its on/off state as a WordPress option; defaults to `'yes'`. Toggle from **WP Admin → Lalia → Overview**.
+The plugin has independently toggleable modules. Each stores its on/off state as a WordPress option; defaults to `'yes'`. Toggle from **WP Admin → Lalia → Overview**.
 
 | Option | Default | Module |
 |--------|---------|--------|
@@ -22,6 +22,7 @@ The plugin has three independently toggleable modules. Each stores its on/off st
 | `lalia_enable_single_item_cart` | `'yes'` | WooCommerce cart restriction (one product, qty 1) |
 | `lalia_enable_stripe_package_id` | `'yes'` | Copy each WC product's `_lalia_package_id` post meta into Stripe PaymentIntent metadata at checkout, so the LALIA ERP `stripe-sales-event-worker` can attribute the purchase to the right LALIA package |
 | `lalia_enable_course_schedule` | `'yes'` | `[lalia_course_schedule]` — renders upcoming courses read live from the LALIA ERP |
+| `lalia_enable_portal_sso` | **`'no'`** | Portal SSO — serves `/my-lalia/`, which embeds the LALIA User Zone portal for logged-in customers with a signed handoff token (see below). Ships disabled so an auto-update reaching production stays inert until the rollout gate. |
 
 ### SSO module
 
@@ -191,3 +192,80 @@ URL so the token never reaches browser history or analytics.
   token through WooCommerce's add-to-cart redirect (`woocommerce_add_to_cart_redirect` filter).
 - Dev utilities: `bin/make-prefill-token.php` (mint links), `bin/test-prefill.php`
   (13-check assertion suite) — both via `wp eval-file`.
+
+## Module: Portal SSO (`/my-lalia/`, LALIA User Zone)
+
+The WordPress half of the User Zone handoff (lalia-erp ticket L20-985; spec
+`docs/superpowers/specs/2026-08-28-user-zone-portal-design.md` in lalia-erp, §3.1 / §3.4).
+Code: `includes/portal-sso/` + `assets/js/portal-embed.js`.
+
+**What it does.** A logged-in customer opens `/my-lalia/`. The plugin mints a
+handoff token and serves a standalone, full-viewport page (no theme header/footer —
+the portal brings its own navigation) whose only content is an iframe to the portal:
+
+```
+https://erp.lalia-berlin.com/portal/#sso=<token>
+```
+
+The token is in the **URL fragment**, never a query string: fragments are not sent to
+any server, do not land in logs or `Referer`, and the portal strips it from the frame's
+URL on boot. Logged-out visitors are redirected to the login page and back.
+
+**Token contract** (`Lalia_Portal_SSO_Token`, `firebase/php-jwt`, HS256):
+
+```json
+{ "iss": "lalia-wp", "aud": "lalia-portal", "sub": "<WP user id>",
+  "email": "<login e-mail, lower-cased>", "first_name": "…", "last_name": "…",
+  "iat": 1756380000, "exp": 1756380120, "jti": "<uuid v4>" }
+```
+
+120-second lifetime, single-use (the ERP records the `jti`); `first_name`/`last_name`
+fall back to the WooCommerce `billing_*` fields. Only users with an allowed role mint
+(`customer`, `subscriber`, `administrator`, `shop_manager`; filter
+`lalia_portal_sso_allowed_roles`) — the ERP is the real authority: an e-mail without an
+active `portal_identities` row there is refused as `identity_unresolved`.
+
+**Settings** — WP Admin → Lalia → Portal SSO:
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `lalia_portal_sso_secret` | *(empty — module inert)* | `PORTAL_SSO_SECRET`, must equal the ERP's value. A **third** key: never the Zenler `wp_sso_api_key`, never `lalia_prefill_secret`. Write-only field; an empty save keeps the current value. |
+| `lalia_portal_url` | `https://erp.lalia-berlin.com/portal/` | Portal base. The **stage** WordPress points at `https://erp.lalia-berlin.com/stage/portal/` (stage has its own secret). |
+| `lalia_portal_page_slug` | `my-lalia` | Served by the plugin via a rewrite rule; no WordPress page is needed and an existing page with that slug is shadowed. |
+| `lalia_portal_sso_enable_logging` | `yes` | Mint / denied / error events → `{prefix}lalia_portal_sso_logs` (30-day retention; Lalia → Portal SSO Logs). |
+
+Rotation: set the new secret in the ERP as `PORTAL_SSO_SECRET` (old value →
+`PORTAL_SSO_SECRET_PREVIOUS`), deploy, paste the new value here, then clear the previous
+value on the ERP side.
+
+**Menu entry.** Add a "My LALIA" item pointing at `/my-lalia/` in the normal menu editor
+(Elementor's nav widget reads the same menus). Items linking to the page are hidden for
+visitors who could not open it (logged out or not a customer role) — nothing is
+auto-inserted.
+
+**postMessage bridge** (`assets/js/portal-embed.js` ↔ lalia-erp `portal/src/app/embed.ts`).
+Messages are `{ type: "lalia-portal", v: 1, action }`; every inbound message is checked
+against the portal origin and the frame's window, every outbound one targets the portal
+origin (never `*`); the portal in turn only trusts origins listed in its
+`VITE_PORTAL_EMBED_ORIGINS` build setting.
+
+| Direction | `action` | Effect |
+|-----------|----------|--------|
+| portal → page | `ready` | portal booted; loading overlay removed |
+| portal → page | `logout` | user logged out inside the portal (its ERP session is already revoked) → page navigates to `wp_logout_url()` so the WordPress session ends too |
+| portal → page | `reload` | portal session expired (30 min access / 12 h absolute) → page reloads and mints a fresh token if WordPress is still logged in (guarded to one automatic reload per 30 s, then a manual button) |
+| page → portal | `logout` | the WordPress session ended — detected by a heartbeat (`admin-ajax.php?action=lalia_portal_heartbeat`, every 60 s and on tab focus / bfcache restore), so a logout in another tab reaches an open portal → portal revokes its session, page goes to the login screen |
+
+Route↔URL sync between page and frame is deliberately not part of v1 (the portal is
+hash-routed inside the frame).
+
+**Page hardening.** The embed page is served with `Cache-Control: no-store`,
+`X-Frame-Options: DENY` + `frame-ancestors 'none'` (it embeds, it is never embedded),
+`X-Robots-Tag: noindex`, and the iframe uses `referrerpolicy="strict-origin"` so the
+portal learns only the embedding origin.
+
+**Dev / test.** `bin/test-portal-sso.php` (38 checks) via
+`docker compose run --rm wpcli eval-file wp-content/plugins/lalia/bin/test-portal-sso.php`.
+For an end-to-end run in the local docker stack, point `lalia_portal_url` at the ERP stage
+portal, set the stage `PORTAL_SSO_SECRET`, and provision the test user's e-mail on stage
+with `portal-auth/dev-mint`.

@@ -83,6 +83,21 @@ foreach ( array(
 	}
 }
 
+// Portal SSO module (LALIA User Zone handoff, L20-985). Classes are always
+// loaded so the settings page works while the module is off; the runtime
+// hooks only register in bootstrap() when it is enabled.
+foreach ( array(
+	'includes/portal-sso/class-portal-sso-token.php',
+	'includes/portal-sso/class-portal-sso-logger.php',
+	'includes/portal-sso/class-portal-sso.php',
+	'includes/portal-sso/class-portal-sso-settings.php',
+) as $rel_path ) {
+	$file = LALIA_PLUGIN_DIR . $rel_path;
+	if ( file_exists( $file ) ) {
+		require_once $file;
+	}
+}
+
 // Single-Item Cart will be conditionally included during bootstrap based on settings.
 
 class Lalia_Plugin {
@@ -142,6 +157,14 @@ class Lalia_Plugin {
 				Lalia_Course_Schedule::init();
 			}
 		}
+		// Portal SSO (User Zone handoff). Default OFF: a plugin update reaching
+		// production must stay inert until the rollout gate flips the toggle.
+		if ( is_admin() && class_exists( 'Lalia_Portal_SSO_Settings' ) ) {
+			Lalia_Portal_SSO_Settings::init();
+		}
+		if ( get_option( 'lalia_enable_portal_sso', 'no' ) === 'yes' && class_exists( 'Lalia_Portal_SSO' ) ) {
+			Lalia_Portal_SSO::init();
+		}
 		// Stripe → LALIA package_id injector (WC product meta → PI metadata).
 		$lalia_enable_pkg_id = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		if ( $lalia_enable_pkg_id ) {
@@ -167,6 +190,15 @@ class Lalia_Plugin {
 		add_option( 'lalia_prefill_secret', '' );
 		add_option( 'lalia_enable_stripe_package_id', 'yes' );
 		add_option( 'lalia_enable_course_schedule', 'yes' );
+		// Portal SSO ships disabled (see bootstrap()).
+		add_option( 'lalia_enable_portal_sso', 'no' );
+		add_option( 'lalia_portal_sso_secret', '' );
+		add_option( 'lalia_portal_url', Lalia_Portal_SSO::DEFAULT_PORTAL_URL );
+		add_option( 'lalia_portal_page_slug', Lalia_Portal_SSO::DEFAULT_PAGE_SLUG );
+		add_option( 'lalia_portal_sso_enable_logging', 'yes' );
+		if ( class_exists( 'Lalia_Portal_SSO_Logger' ) ) {
+			Lalia_Portal_SSO_Logger::ensure_table();
+		}
 		// Deactivate old standalone plugins if active.
 		if ( function_exists( 'deactivate_plugins' ) ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -184,6 +216,7 @@ class Lalia_Plugin {
 	}
 
 	public function on_deactivate() {
+		wp_clear_scheduled_hook( 'lalia_portal_sso_cleanup_logs' );
 		flush_rewrite_rules();
 	}
 
@@ -228,6 +261,27 @@ class Lalia_Plugin {
 				array( $settings, 'render_logs_page' )
 			);
 		}
+
+		// Portal SSO pages are always mounted so the module can be configured before it is enabled.
+		if ( class_exists( 'Lalia_Portal_SSO_Settings' ) ) {
+			$portal_settings = Lalia_Portal_SSO_Settings::init();
+			add_submenu_page(
+				'lalia',
+				'Portal SSO',
+				'Portal SSO',
+				'manage_options',
+				Lalia_Portal_SSO_Settings::PAGE_SLUG,
+				array( $portal_settings, 'render_settings_page' )
+			);
+			add_submenu_page(
+				'lalia',
+				'Portal SSO Logs',
+				'Portal SSO Logs',
+				'manage_options',
+				Lalia_Portal_SSO_Settings::LOGS_SLUG,
+				array( $portal_settings, 'render_logs_page' )
+			);
+		}
 	}
 
 	public function render_overview_page() {
@@ -237,6 +291,8 @@ class Lalia_Plugin {
 		$prefill_secret_set = '' !== get_option( 'lalia_prefill_secret', '' );
 		$pkg_id_enabled = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		$schedule_enabled = get_option( 'lalia_enable_course_schedule', 'yes' ) === 'yes';
+		$portal_sso_enabled = get_option( 'lalia_enable_portal_sso', 'no' ) === 'yes';
+		$portal_sso_status = class_exists( 'Lalia_Portal_SSO' ) ? Lalia_Portal_SSO::validate_configuration() : new WP_Error( 'missing', 'Portal SSO module files missing' );
 		$has_wc_single_item_cart = $cart_enabled && class_exists( 'WCSingleItemCart' );
 		$sso_status = ( $sso_enabled && class_exists( 'WP_SSO_Handler' ) ) ? WP_SSO_Handler::validate_configuration() : new WP_Error( 'disabled', 'WP SSO is disabled' );
 		$notice = isset( $_GET['lalia_notice'] ) ? sanitize_text_field( wp_unslash( $_GET['lalia_notice'] ) ) : '';
@@ -303,7 +359,29 @@ class Lalia_Plugin {
 						<input type="submit" class="button" value="<?php echo $schedule_enabled ? 'Disable' : 'Enable'; ?>" />
 					</form>
 				</li>
+				<li>
+					<strong>Portal SSO</strong>: serves <code><?php echo esc_html( class_exists( 'Lalia_Portal_SSO' ) ? Lalia_Portal_SSO::page_url() : '/my-lalia/' ); ?></code> — embeds the LALIA User Zone portal for logged-in customers with a signed handoff token (ships disabled).
+					Status: <?php echo $portal_sso_enabled ? '<span style="color:#46b450;">Enabled</span>' : '<span style="color:#dc3232;">Disabled</span>'; ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px;">
+						<?php wp_nonce_field( 'lalia_toggle_module' ); ?>
+						<input type="hidden" name="action" value="lalia_toggle_module" />
+						<input type="hidden" name="module" value="portal_sso" />
+						<input type="hidden" name="state" value="<?php echo $portal_sso_enabled ? 'disable' : 'enable'; ?>" />
+						<input type="submit" class="button" value="<?php echo $portal_sso_enabled ? 'Disable' : 'Enable'; ?>" />
+					</form>
+				</li>
 			</ul>
+			<hr />
+			<h2>Portal SSO Configuration</h2>
+			<?php if ( is_wp_error( $portal_sso_status ) ) : ?>
+				<div class="notice notice-warning"><p><?php echo esc_html( $portal_sso_status->get_error_message() ); ?></p></div>
+			<?php else : ?>
+				<div class="notice notice-success"><p>Portal SSO configuration looks good.</p></div>
+			<?php endif; ?>
+			<p>
+				<a class="button button-primary" href="<?php echo esc_url( admin_url( 'admin.php?page=' . Lalia_Portal_SSO_Settings::PAGE_SLUG ) ); ?>">Configure Portal SSO</a>
+				<a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=' . Lalia_Portal_SSO_Settings::LOGS_SLUG ) ); ?>">View Portal SSO Logs</a>
+			</p>
 			<hr />
 			<h2>WP SSO Configuration</h2>
 			<?php if ( is_wp_error( $sso_status ) ) : ?>
@@ -366,6 +444,17 @@ class Lalia_Plugin {
 			case 'prefill':
 				update_option( 'lalia_enable_checkout_prefill', $enable ? 'yes' : 'no' );
 				$message = $enable ? 'Checkout Prefill enabled' : 'Checkout Prefill disabled';
+				break;
+			case 'portal_sso':
+				update_option( 'lalia_enable_portal_sso', $enable ? 'yes' : 'no' );
+				if ( $enable ) {
+					// The rewrite rule is only registered while enabled, so a flush
+					// here would miss it: forget the stamp and let the next init flush.
+					Lalia_Portal_SSO::invalidate_rewrite();
+				} else {
+					flush_rewrite_rules();
+				}
+				$message = $enable ? 'Portal SSO enabled' : 'Portal SSO disabled';
 				break;
 			default:
 				wp_redirect( admin_url( 'admin.php?page=lalia' ) );
