@@ -152,8 +152,11 @@ try {
 	$primary_args = (object) array( 'theme_location' => 'primary', 'menu' => null );
 	$other_args   = (object) array( 'theme_location' => 'footer_menu', 'menu' => null );
 	wp_set_current_user( $customer );
-	$with = $sso3->filter_menu_objects( array(), $primary_args );
-	lalia_portal_check( 'zone entry appended to the primary menu for a customer', 1 === count( $with ) && false !== strpos( $with[0]->title, 'User Zone' ) && false !== strpos( $with[0]->title, 'Maria' ) && Lalia_Portal_SSO::page_url() === $with[0]->url );
+	$fake_logout = (object) array( 'ID' => 1, 'url' => 'https://x/wp-login.php?action=logout&_wpnonce=abc', 'title' => 'Log Out', 'classes' => array() );
+	$with = $sso3->filter_menu_objects( array( $fake_logout ), $primary_args );
+	lalia_portal_check( 'zone entry appended + standalone logout item absorbed', 1 === count( $with ) && false !== strpos( $with[0]->title, 'lalia-zone-avatar' ) && false !== strpos( $with[0]->title, 'Maria' ) && Lalia_Portal_SSO::page_url() === $with[0]->url );
+	$dd = $sso3->append_zone_dropdown( '<a>chip</a>', $with[0] );
+	lalia_portal_check( 'dropdown carries Open User Zone + Log out + identity', false !== strpos( $dd, 'Open User Zone' ) && false !== strpos( $dd, 'Log out' ) && false !== strpos( $dd, 'action=logout' ) && false !== strpos( $dd, 'Maria' ) );
 	lalia_portal_check( 'zone entry absent from other menus', array() === $sso3->filter_menu_objects( array(), $other_args ) );
 	wp_set_current_user( $blogger );
 	$blogger_items = $sso3->filter_menu_objects( array(), $primary_args );
