@@ -138,6 +138,26 @@ try {
 	lalia_portal_check( 'rewrite rule for the page slug is registered', 'yes' !== $old_enabled || ( is_array( $rules ) && isset( $rules[ '^' . preg_quote( 'my-lalia', '#' ) . '/?$' ] ) ) );
 	lalia_portal_check( 'allowed roles include customer and exclude contributor', in_array( 'customer', Lalia_Portal_SSO_Token::allowed_roles(), true ) && ! in_array( 'contributor', Lalia_Portal_SSO_Token::allowed_roles(), true ) );
 
+	// --- login redirect ---
+	$sso2 = Lalia_Portal_SSO::init();
+	lalia_portal_check( 'login redirect: customer → User Zone page', Lalia_Portal_SSO::page_url() === $sso2->filter_login_redirect( admin_url(), '', get_user_by( 'id', $customer ) ) );
+	lalia_portal_check( 'login redirect: contributor unchanged', admin_url() === $sso2->filter_login_redirect( admin_url(), '', get_user_by( 'id', $blogger ) ) );
+	$admin_user = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
+	if ( $admin_user ) {
+		lalia_portal_check( 'login redirect: administrator unchanged', admin_url() === $sso2->filter_login_redirect( admin_url(), '', $admin_user[0] ) );
+	}
+
+	// --- zone badge ---
+	$sso = Lalia_Portal_SSO::init();
+	wp_set_current_user( $customer );
+	ob_start(); $sso->render_zone_badge(); $badge = ob_get_clean();
+	lalia_portal_check( 'badge renders for an eligible logged-in customer', false !== strpos( $badge, 'lalia-zone-badge' ) && false !== strpos( $badge, Lalia_Portal_SSO::page_url() ) );
+	wp_set_current_user( $blogger );
+	ob_start(); $sso->render_zone_badge(); $no_badge = ob_get_clean();
+	wp_set_current_user( 0 );
+	ob_start(); $sso->render_zone_badge(); $anon_badge = ob_get_clean();
+	lalia_portal_check( 'badge absent for non-customers and logged-out visitors', '' === $no_badge && '' === $anon_badge );
+
 	// --- logger ---
 	Lalia_Portal_SSO_Logger::ensure_table();
 	$logger = Lalia_Portal_SSO_Logger::get_instance();

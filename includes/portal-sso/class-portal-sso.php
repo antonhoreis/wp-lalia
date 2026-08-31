@@ -55,6 +55,12 @@ class Lalia_Portal_SSO {
 		add_action( 'wp_ajax_nopriv_' . self::AJAX_HEARTBEAT, array( $this, 'ajax_heartbeat' ) );
 		add_filter( 'wp_get_nav_menu_items', array( $this, 'filter_menu_items' ), 10, 3 );
 		add_filter( 'wp_nav_menu_objects', array( $this, 'filter_menu_objects' ), 10, 2 );
+		add_action( 'wp_footer', array( $this, 'render_zone_badge' ) );
+		// Priority 100: several plugins fight over login_redirect (members @9,
+		// user_auth's role map @10, login-or-logout-menu-item @11 — the last
+		// one forces home_url and wins). The User Zone is the customer's
+		// destination, so this module has the final word for customer roles.
+		add_filter( 'login_redirect', array( $this, 'filter_login_redirect' ), 100, 3 );
 		Lalia_Portal_SSO_Logger::get_instance();
 	}
 
@@ -333,5 +339,72 @@ class Lalia_Portal_SSO {
 			return false;
 		}
 		return true === Lalia_Portal_SSO_Token::validate_user( get_current_user_id() );
+	}
+
+	/**
+	 * Roles whose login lands in the User Zone. Deliberately narrower than
+	 * the mint gate: administrators and shop managers keep their normal
+	 * destination (wp-admin etc.) even though they may open the portal.
+	 */
+	public static function login_redirect_roles() {
+		$roles = apply_filters( 'lalia_portal_login_redirect_roles', array( 'customer', 'subscriber' ) );
+		return is_array( $roles ) ? $roles : array();
+	}
+
+	/** login_redirect: send customers straight into the User Zone. */
+	public function filter_login_redirect( $redirect_to, $requested_redirect_to, $user ) {
+		if ( is_wp_error( $user ) || ! ( $user instanceof WP_User ) ) {
+			return $redirect_to;
+		}
+		$roles = is_array( $user->roles ) ? $user->roles : array();
+		if ( ! array_intersect( self::login_redirect_roles(), $roles ) ) {
+			return $redirect_to;
+		}
+		if ( array_intersect( array( 'administrator', 'shop_manager' ), $roles ) ) {
+			return $redirect_to;
+		}
+		if ( true !== Lalia_Portal_SSO_Token::validate_user( $user->ID ) ) {
+			return $redirect_to;
+		}
+		return self::page_url();
+	}
+
+	// ── User Zone badge ──────────────────────────────────────────────────────
+
+	/**
+	 * Floating "My LALIA" badge on the normal site for logged-in customers —
+	 * the way back into the User Zone now that it replaces the nav entries
+	 * ("My LALIA" menu item, Zenler "My Courses"). Renders on front-end pages
+	 * only; the /my-lalia/ page itself never reaches wp_footer (standalone
+	 * template), so the badge cannot appear inside the zone.
+	 */
+	public function render_zone_badge() {
+		if ( is_admin() || ! $this->current_user_can_open_portal() ) {
+			return;
+		}
+		if ( ! apply_filters( 'lalia_portal_badge_enabled', true ) ) {
+			return;
+		}
+		$url = self::page_url();
+		?>
+		<a href="<?php echo esc_url( $url ); ?>" class="lalia-zone-badge" aria-label="<?php echo esc_attr__( 'Open your LALIA User Zone', 'lalia' ); ?>">
+			<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3 1 9l11 6 9-4.91V17h2V9L12 3zm-7 9.18v4L12 20l7-3.82v-4L12 16l-7-3.82z"/></svg>
+			<span><?php echo esc_html__( 'My LALIA', 'lalia' ); ?></span>
+		</a>
+		<style>
+			.lalia-zone-badge {
+				position: fixed; right: 20px; bottom: 20px; z-index: 99990;
+				display: inline-flex; align-items: center; gap: 8px;
+				padding: 10px 18px; border-radius: 999px;
+				background: #0f60d6; color: #ffffff !important;
+				font: 600 15px/1 var(--e-global-typography-text-font-family, system-ui, sans-serif);
+				text-decoration: none; box-shadow: 0 4px 14px rgba(15, 96, 214, 0.35);
+				transition: transform 0.15s ease, box-shadow 0.15s ease;
+			}
+			.lalia-zone-badge:hover { color: #ffffff; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(15, 96, 214, 0.45); }
+			@media print { .lalia-zone-badge { display: none; } }
+			@media (max-width: 480px) { .lalia-zone-badge span { display: none; } .lalia-zone-badge { padding: 12px; } }
+		</style>
+		<?php
 	}
 }
