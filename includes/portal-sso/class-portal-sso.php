@@ -402,6 +402,7 @@ class Lalia_Portal_SSO {
 		}
 		?>
 		<style id="lalia-zone-entry-css">
+			.lalia-zone-menu-item { margin-left: auto; }
 			.lalia-zone-menu-item > a { display: inline-flex !important; align-items: center; gap: 10px; }
 			.lalia-zone-avatar { width: 34px; height: 34px; border-radius: 50%; background: #e8f1fd; color: #0f60d6; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 			.lalia-zone-text { display: flex; flex-direction: column; line-height: 1.2; text-align: left; }
