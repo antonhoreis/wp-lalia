@@ -147,16 +147,19 @@ try {
 		lalia_portal_check( 'login redirect: administrator unchanged', admin_url() === $sso2->filter_login_redirect( admin_url(), '', $admin_user[0] ) );
 	}
 
-	// --- zone badge ---
-	$sso = Lalia_Portal_SSO::init();
+	// --- header zone entry ---
+	$sso3 = Lalia_Portal_SSO::init();
+	$primary_args = (object) array( 'theme_location' => 'primary', 'menu' => null );
+	$other_args   = (object) array( 'theme_location' => 'footer_menu', 'menu' => null );
 	wp_set_current_user( $customer );
-	ob_start(); $sso->render_zone_badge(); $badge = ob_get_clean();
-	lalia_portal_check( 'badge renders for an eligible logged-in customer', false !== strpos( $badge, 'lalia-zone-badge' ) && false !== strpos( $badge, Lalia_Portal_SSO::page_url() ) );
+	$with = $sso3->filter_menu_objects( array(), $primary_args );
+	lalia_portal_check( 'zone entry appended to the primary menu for a customer', 1 === count( $with ) && false !== strpos( $with[0]->title, 'User Zone' ) && false !== strpos( $with[0]->title, 'Maria' ) && Lalia_Portal_SSO::page_url() === $with[0]->url );
+	lalia_portal_check( 'zone entry absent from other menus', array() === $sso3->filter_menu_objects( array(), $other_args ) );
 	wp_set_current_user( $blogger );
-	ob_start(); $sso->render_zone_badge(); $no_badge = ob_get_clean();
+	$blogger_items = $sso3->filter_menu_objects( array(), $primary_args );
 	wp_set_current_user( 0 );
-	ob_start(); $sso->render_zone_badge(); $anon_badge = ob_get_clean();
-	lalia_portal_check( 'badge absent for non-customers and logged-out visitors', '' === $no_badge && '' === $anon_badge );
+	$anon_items = $sso3->filter_menu_objects( array(), $primary_args );
+	lalia_portal_check( 'zone entry absent for non-customers and logged-out visitors', array() === $blogger_items && array() === $anon_items );
 
 	// --- logger ---
 	Lalia_Portal_SSO_Logger::ensure_table();
