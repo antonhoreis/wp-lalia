@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Lalia
  * Description: Consolidated plugin integrating Single-Item Cart behavior, WP SSO, and the Stripe→LALIA package_id injector under one roof.
- * Version: 1.0.12
+ * Version: 1.0.13
  * Author: Anton Horeis
  * Text Domain: lalia
  * Update URI: https://europe-west3-horeis.cloudfunctions.net/wp_update/lalia
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Define Lalia constants.
 if ( ! defined( 'LALIA_VERSION' ) ) {
-	define( 'LALIA_VERSION', '1.0.12' );
+	define( 'LALIA_VERSION', '1.0.13' );
 }
 if ( ! defined( 'LALIA_PLUGIN_FILE' ) ) {
 	define( 'LALIA_PLUGIN_FILE', __FILE__ );
