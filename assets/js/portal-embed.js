@@ -97,6 +97,11 @@
       case "reload":
         reenter();
         break;
+      case "exit":
+        // Leave the zone, keep the sessions: back to the site's own home.
+        stopped = true;
+        window.location.assign(cfg.homeUrl);
+        break;
       default:
         break;
     }

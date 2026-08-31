@@ -138,6 +138,32 @@ try {
 	lalia_portal_check( 'rewrite rule for the page slug is registered', 'yes' !== $old_enabled || ( is_array( $rules ) && isset( $rules[ '^' . preg_quote( 'my-lalia', '#' ) . '/?$' ] ) ) );
 	lalia_portal_check( 'allowed roles include customer and exclude contributor', in_array( 'customer', Lalia_Portal_SSO_Token::allowed_roles(), true ) && ! in_array( 'contributor', Lalia_Portal_SSO_Token::allowed_roles(), true ) );
 
+	// --- login redirect ---
+	$sso2 = Lalia_Portal_SSO::init();
+	lalia_portal_check( 'login redirect: customer → User Zone page', Lalia_Portal_SSO::page_url() === $sso2->filter_login_redirect( admin_url(), '', get_user_by( 'id', $customer ) ) );
+	lalia_portal_check( 'login redirect: contributor unchanged', admin_url() === $sso2->filter_login_redirect( admin_url(), '', get_user_by( 'id', $blogger ) ) );
+	$admin_user = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
+	if ( $admin_user ) {
+		lalia_portal_check( 'login redirect: administrator unchanged', admin_url() === $sso2->filter_login_redirect( admin_url(), '', $admin_user[0] ) );
+	}
+
+	// --- header zone entry ---
+	$sso3 = Lalia_Portal_SSO::init();
+	$primary_args = (object) array( 'theme_location' => 'primary', 'menu' => null );
+	$other_args   = (object) array( 'theme_location' => 'footer_menu', 'menu' => null );
+	wp_set_current_user( $customer );
+	$fake_logout = (object) array( 'ID' => 1, 'url' => 'https://x/wp-login.php?action=logout&_wpnonce=abc', 'title' => 'Log Out', 'classes' => array() );
+	$with = $sso3->filter_menu_objects( array( $fake_logout ), $primary_args );
+	lalia_portal_check( 'zone entry appended + standalone logout item absorbed', 1 === count( $with ) && false !== strpos( $with[0]->title, 'lalia-zone-avatar' ) && false !== strpos( $with[0]->title, 'Maria' ) && Lalia_Portal_SSO::page_url() === $with[0]->url );
+	$dd = $sso3->append_zone_dropdown( '<a>chip</a>', $with[0] );
+	lalia_portal_check( 'dropdown carries Open User Zone + Log out + identity', false !== strpos( $dd, 'Open User Zone' ) && false !== strpos( $dd, 'Log out' ) && false !== strpos( $dd, 'action=logout' ) && false !== strpos( $dd, 'Maria' ) );
+	lalia_portal_check( 'zone entry absent from other menus', array() === $sso3->filter_menu_objects( array(), $other_args ) );
+	wp_set_current_user( $blogger );
+	$blogger_items = $sso3->filter_menu_objects( array(), $primary_args );
+	wp_set_current_user( 0 );
+	$anon_items = $sso3->filter_menu_objects( array(), $primary_args );
+	lalia_portal_check( 'zone entry absent for non-customers and logged-out visitors', array() === $blogger_items && array() === $anon_items );
+
 	// --- logger ---
 	Lalia_Portal_SSO_Logger::ensure_table();
 	$logger = Lalia_Portal_SSO_Logger::get_instance();
