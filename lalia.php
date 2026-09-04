@@ -85,12 +85,14 @@ foreach ( array(
 
 // Portal SSO module (LALIA User Zone handoff, L20-985). Classes are always
 // loaded so the settings page works while the module is off; the runtime
-// hooks only register in bootstrap() when it is enabled.
+// hooks only register in bootstrap() when it is enabled. The erasure
+// endpoint (L20-1025) shares the secret and the logger but has its own toggle.
 foreach ( array(
 	'includes/portal-sso/class-portal-sso-token.php',
 	'includes/portal-sso/class-portal-sso-logger.php',
 	'includes/portal-sso/class-portal-sso.php',
 	'includes/portal-sso/class-portal-sso-settings.php',
+	'includes/portal-sso/class-portal-sso-erasure.php',
 ) as $rel_path ) {
 	$file = LALIA_PLUGIN_DIR . $rel_path;
 	if ( file_exists( $file ) ) {
@@ -165,6 +167,12 @@ class Lalia_Plugin {
 		if ( get_option( 'lalia_enable_portal_sso', 'no' ) === 'yes' && class_exists( 'Lalia_Portal_SSO' ) ) {
 			Lalia_Portal_SSO::init();
 		}
+		// Portal erasure endpoint (GDPR Art. 17, L20-1025): the ERP deletes a
+		// customer account with a signed request. Independent of the Portal SSO
+		// toggle — production runs with SSO off — and default OFF as well.
+		if ( get_option( 'lalia_enable_portal_erasure', 'no' ) === 'yes' && class_exists( 'Lalia_Portal_Erasure' ) ) {
+			Lalia_Portal_Erasure::init();
+		}
 		// Stripe → LALIA package_id injector (WC product meta → PI metadata).
 		$lalia_enable_pkg_id = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		if ( $lalia_enable_pkg_id ) {
@@ -196,6 +204,8 @@ class Lalia_Plugin {
 		add_option( 'lalia_portal_url', Lalia_Portal_SSO::DEFAULT_PORTAL_URL );
 		add_option( 'lalia_portal_page_slug', Lalia_Portal_SSO::DEFAULT_PAGE_SLUG );
 		add_option( 'lalia_portal_sso_enable_logging', 'yes' );
+		// Portal erasure endpoint ships disabled too (see bootstrap()).
+		add_option( 'lalia_enable_portal_erasure', 'no' );
 		if ( class_exists( 'Lalia_Portal_SSO_Logger' ) ) {
 			Lalia_Portal_SSO_Logger::ensure_table();
 		}
@@ -292,6 +302,7 @@ class Lalia_Plugin {
 		$pkg_id_enabled = get_option( 'lalia_enable_stripe_package_id', 'yes' ) === 'yes';
 		$schedule_enabled = get_option( 'lalia_enable_course_schedule', 'yes' ) === 'yes';
 		$portal_sso_enabled = get_option( 'lalia_enable_portal_sso', 'no' ) === 'yes';
+		$portal_erasure_enabled = get_option( 'lalia_enable_portal_erasure', 'no' ) === 'yes';
 		$portal_sso_status = class_exists( 'Lalia_Portal_SSO' ) ? Lalia_Portal_SSO::validate_configuration() : new WP_Error( 'missing', 'Portal SSO module files missing' );
 		$has_wc_single_item_cart = $cart_enabled && class_exists( 'WCSingleItemCart' );
 		$sso_status = ( $sso_enabled && class_exists( 'WP_SSO_Handler' ) ) ? WP_SSO_Handler::validate_configuration() : new WP_Error( 'disabled', 'WP SSO is disabled' );
@@ -368,6 +379,17 @@ class Lalia_Plugin {
 						<input type="hidden" name="module" value="portal_sso" />
 						<input type="hidden" name="state" value="<?php echo $portal_sso_enabled ? 'disable' : 'enable'; ?>" />
 						<input type="submit" class="button" value="<?php echo $portal_sso_enabled ? 'Disable' : 'Enable'; ?>" />
+					</form>
+				</li>
+				<li>
+					<strong>Portal erasure endpoint</strong>: <code>POST /wp-json/lalia/v1/portal/erase-user</code> — lets the LALIA ERP delete a customer account after a GDPR erasure request. Needs the Portal SSO shared secret (ships disabled).
+					Status: <?php echo $portal_erasure_enabled ? '<span style="color:#46b450;">Enabled</span>' : '<span style="color:#dc3232;">Disabled</span>'; ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin-left:10px;">
+						<?php wp_nonce_field( 'lalia_toggle_module' ); ?>
+						<input type="hidden" name="action" value="lalia_toggle_module" />
+						<input type="hidden" name="module" value="portal_erasure" />
+						<input type="hidden" name="state" value="<?php echo $portal_erasure_enabled ? 'disable' : 'enable'; ?>" />
+						<input type="submit" class="button" value="<?php echo $portal_erasure_enabled ? 'Disable' : 'Enable'; ?>" />
 					</form>
 				</li>
 			</ul>
@@ -455,6 +477,10 @@ class Lalia_Plugin {
 					flush_rewrite_rules();
 				}
 				$message = $enable ? 'Portal SSO enabled' : 'Portal SSO disabled';
+				break;
+			case 'portal_erasure':
+				update_option( 'lalia_enable_portal_erasure', $enable ? 'yes' : 'no' );
+				$message = $enable ? 'Portal erasure endpoint enabled' : 'Portal erasure endpoint disabled';
 				break;
 			default:
 				wp_redirect( admin_url( 'admin.php?page=lalia' ) );

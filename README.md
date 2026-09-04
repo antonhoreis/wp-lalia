@@ -23,6 +23,7 @@ The plugin has independently toggleable modules. Each stores its on/off state as
 | `lalia_enable_stripe_package_id` | `'yes'` | Copy each WC product's `_lalia_package_id` post meta into Stripe PaymentIntent metadata at checkout, so the LALIA ERP `stripe-sales-event-worker` can attribute the purchase to the right LALIA package |
 | `lalia_enable_course_schedule` | `'yes'` | `[lalia_course_schedule]` — renders upcoming courses read live from the LALIA ERP |
 | `lalia_enable_portal_sso` | **`'no'`** | Portal SSO — serves `/my-lalia/`, which embeds the LALIA User Zone portal for logged-in customers with a signed handoff token (see below). Ships disabled so an auto-update reaching production stays inert until the rollout gate. |
+| `lalia_enable_portal_erasure` | **`'no'`** | Portal erasure endpoint — `POST /wp-json/lalia/v1/portal/erase-user`, lets the LALIA ERP delete a customer account after a GDPR erasure request (see below). Independent of the Portal SSO toggle; ships disabled. |
 
 ### SSO module
 
@@ -269,3 +270,68 @@ portal learns only the embedding origin.
 For an end-to-end run in the local docker stack, point `lalia_portal_url` at the ERP stage
 portal, set the stage `PORTAL_SSO_SECRET`, and provision the test user's e-mail on stage
 with `portal-auth/dev-mint`.
+
+## Module: Portal erasure endpoint (GDPR Art. 17, `POST /wp-json/lalia/v1/portal/erase-user`)
+
+The WordPress half of a customer's right-to-erasure request (lalia-erp ticket L20-1025).
+When the ERP fulfils an erasure it also deletes the customer's WordPress account through
+this endpoint, so the login, profile and WooCommerce customer record go too. Code:
+`includes/portal-sso/class-portal-sso-erasure.php` (`Lalia_Portal_Erasure`).
+
+- Toggle: WP Admin → Lalia → Overview → "Portal erasure endpoint"
+  (`lalia_enable_portal_erasure`, default **`'no'`**). While it is off the route does not
+  exist (`404 rest_no_route`). It is **independent of the Portal SSO toggle** — production
+  runs with Portal SSO off and this endpoint on.
+- Secret: the **Portal SSO shared secret** (`lalia_portal_sso_secret`, WP Admin → Lalia →
+  Portal SSO), i.e. the ERP's `PORTAL_SSO_SECRET`. No secret = `503 no_secret`. A handoff
+  token can never erase and an erase token can never log in — the two use different
+  issuer/audience pairs.
+- Logging: erasure events land in the Portal SSO log table as event `erase`
+  (Lalia → Portal SSO Logs) while `lalia_portal_sso_enable_logging` is on, otherwise in the
+  PHP error log. The token itself is never logged; a successful deletion records the WP user
+  id and the `jti`, not the e-mail.
+
+**Enabling on the live site** after the plugin update is installed: WP Admin → Lalia →
+Overview → *Portal erasure endpoint* → **Enable**, and check that the Portal SSO secret is
+set (Lalia → Overview shows "Portal SSO secret is not set" otherwise — the SSO module
+itself may stay disabled). Verify with a request without a token: the answer must be
+`401 invalid_token`, not `404 rest_no_route`.
+
+**Request.** `POST /wp-json/lalia/v1/portal/erase-user` with `Authorization: Bearer <jwt>`.
+Some Apache/CGI hosts strip the `Authorization` header before PHP sees it; if the endpoint
+answers `401 invalid_token` to a token you know is good, send the same token as the JSON
+body field `token` instead (`{"token":"<jwt>"}`), which the endpoint accepts as a fallback.
+
+**Token contract** (HS256, same secret as Portal SSO, header `alg` never trusted):
+
+```json
+{ "iss": "lalia-erp", "aud": "lalia-wp-erase",
+  "sub": "<WP user id as a string, or \"\" to resolve by e-mail>",
+  "email": "<lower-cased e-mail, required>",
+  "iat": 1756380000, "exp": 1756380120, "jti": "<uuid v4>" }
+```
+
+`exp - iat` must be within 300 s (mint with 120 s); 30 s of clock skew is tolerated. Every
+`jti` is single-use — it is remembered for 600 s and a second presentation is `409 replayed`.
+
+**Behaviour.**
+
+| Situation | Response |
+|-----------|----------|
+| `sub` set → user looked up by id; its e-mail (lower-cased) must equal `email` | else `409 email_mismatch`, nothing deleted |
+| `sub` empty → user looked up by `email` | — |
+| no such user (either path; no fallback from id to e-mail) | `200 {"ok":true,"deleted":false,"reason":"not_found"}` — idempotent, the ERP treats it as done |
+| user has any of `administrator`, `shop_manager`, `editor`, `author`, `contributor`, or `manage_options` (filter `lalia_portal_erasure_protected_roles` can add roles, never remove these) | `403 protected_role` |
+| deleted | `200 {"ok":true,"deleted":true,"wp_user_id":<id>}` |
+| missing / malformed / wrong-secret / wrong `iss`/`aud` / expired / over-long token | `401 invalid_token` (the reason is only logged) |
+| shared secret not set | `503 no_secret` |
+
+Deletion is `wp_delete_user()` without reassignment. **Orders are kept** — they are
+accounting records: WooCommerce listens on `deleted_user` and resets the orders' customer id
+to 0, and drops the customer's sessions, API keys, payment tokens and analytics row. All user
+meta (including any `_woocommerce_persistent_cart_*` rows) goes with the user.
+
+**Dev / test.** `bin/test-portal-erasure.php` via
+`docker compose run --rm wpcli eval-file wp-content/plugins/lalia/bin/test-portal-erasure.php`
+— exercises the claim rules, the auth failures, both lookup paths, the protected-role gate,
+replay, order retention and the log row against users it creates and removes itself.
