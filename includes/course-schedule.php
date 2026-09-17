@@ -41,6 +41,11 @@
  *               ending in a Purchase Now button; a second card nested inside
  *               would double the chrome.
  *   class       Extra class on the card.
+ *   id          HTML id on the card, so a link can jump straight to it
+ *               (e.g. /online-german-speaking-courses/a2/#N3). Default: the
+ *               level abbreviation in UPPERCASE on a single-level card —
+ *               the anchor the ERP's "Resume your learning" mail links to.
+ *               id="" renders none. Letters, digits, "-" and "_" only.
  *
  * Failure behaviour: the last good payload is kept in an option and served
  * if the endpoint is unreachable. With no payload at all the shortcode
@@ -89,6 +94,9 @@ if ( ! class_exists( 'Lalia_Course_Schedule' ) ) {
 
 		/** Sentinel for "attribute not supplied", so that title="" can mean "no title". */
 		const UNSET_ATT = "\0auto";
+
+		/** @var array<string,bool> Ids already rendered this request — HTML ids must be unique. */
+		private static $used_ids = array();
 
 		/** @var bool The card's CSS is printed once per request. */
 		private static $printed_css = false;
@@ -208,6 +216,7 @@ if ( ! class_exists( 'Lalia_Course_Schedule' ) ) {
 					'empty_text' => self::UNSET_ATT,
 					'variant'    => 'card',
 					'class'      => '',
+					'id'         => self::UNSET_ATT,
 				),
 				$atts,
 				self::SHORTCODE
@@ -240,7 +249,29 @@ if ( ! class_exists( 'Lalia_Course_Schedule' ) ) {
 				? __( 'No upcoming courses are scheduled at the moment.', 'lalia' )
 				: $atts['empty_text'];
 
+			$atts['id'] = self::anchor_id( $atts['id'], $single, $rows );
+
 			return self::css() . self::card( $rows, $single, $inline, $title, $subtitle, $empty_text, $atts );
+		}
+
+		/**
+		 * The card's HTML id: the explicit att, else the level abbreviation of
+		 * a single-level card ("N3", "IM2", "AD1"). '' when there is none or
+		 * the id is already taken on this page.
+		 */
+		private static function anchor_id( $att, $single, $rows ) {
+			if ( self::UNSET_ATT === $att ) {
+				$att = '';
+				if ( $single && ! empty( $rows[0]['level']['abbreviation'] ) ) {
+					$att = strtoupper( (string) $rows[0]['level']['abbreviation'] );
+				}
+			}
+			$id = preg_replace( '/[^A-Za-z0-9_-]/', '', (string) $att );
+			if ( '' === $id || isset( self::$used_ids[ $id ] ) ) {
+				return '';
+			}
+			self::$used_ids[ $id ] = true;
+			return $id;
 		}
 
 		/** @return string[] Lowercased level abbreviations or names to keep. */
@@ -540,7 +571,7 @@ if ( ! class_exists( 'Lalia_Course_Schedule' ) ) {
 
 			ob_start();
 			?>
-<div class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>">
+<div<?php echo '' !== $atts['id'] ? ' id="' . esc_attr( $atts['id'] ) . '"' : ''; ?> class="<?php echo esc_attr( implode( ' ', $classes ) ); ?>">
 	<?php if ( '' !== trim( (string) $title ) ) : ?>
 	<h3 class="lsched__title"><?php echo esc_html( $title ); ?></h3>
 	<?php endif; ?>

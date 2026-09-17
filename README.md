@@ -77,6 +77,7 @@ Examples:
 [lalia_course_schedule]                             all levels, next start each
 [lalia_course_schedule limit="6" days="90"]         a 90-day window, six rows
 [lalia_course_schedule level="N3,N4,N5" title=""]   the novice levels, no heading
+[lalia_course_schedule level="Novice 3" id="N3"]    explicit anchor → /a2/#N3
 ```
 
 #### Inside a level card

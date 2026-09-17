@@ -10,6 +10,11 @@
    page it is dropped on. Values are the LALIA design tokens
    (lalia-wp/design-system/src/styles.css) resolved to literals.
    ------------------------------------------------------------------ */
+.lsched[id] {
+  /* Anchor jumps (#N3) land below the sticky site header, not under it. */
+  scroll-margin-top: 120px;
+}
+
 .lsched {
   /* Palette — mirrors --lalia-* tokens */
   --lsched-ink: #1e293b;
