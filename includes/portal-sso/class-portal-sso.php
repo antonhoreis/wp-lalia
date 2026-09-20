@@ -91,6 +91,40 @@ class Lalia_Portal_SSO {
 	}
 
 	/**
+	 * Where to send a visitor who still has to sign in before the zone opens.
+	 *
+	 * `wp_login_url()` is the raw core form: nothing on this site filters
+	 * `login_url`, while the customer-facing sign-in page belongs to user_auth
+	 * (option `ua_login_page_id`). Bouncing a customer from `/my-lalia/` onto
+	 * the unbranded wp-login.php is the wrong first impression for the User
+	 * Zone, so prefer that page whenever the plugin that renders its form is
+	 * loaded and the page is published; fall back to core otherwise.
+	 *
+	 * `redirect_to` is carried the way core carries it (urlencode() first —
+	 * add_query_arg() does not encode) for the fallback's benefit. The
+	 * user_auth form ignores it and routes by role instead, and its
+	 * `ua_role_redirects` map already points customers at this page.
+	 */
+	public static function login_url( $redirect = '' ) {
+		$url = '';
+		if ( class_exists( 'User_Auth_Plugin' ) ) {
+			$page_id = absint( get_option( 'ua_login_page_id', 0 ) );
+			if ( $page_id && 'publish' === get_post_status( $page_id ) ) {
+				$permalink = get_permalink( $page_id );
+				if ( $permalink ) {
+					$url = empty( $redirect )
+						? $permalink
+						: add_query_arg( 'redirect_to', urlencode( $redirect ), $permalink );
+				}
+			}
+		}
+		if ( '' === $url ) {
+			$url = wp_login_url( $redirect );
+		}
+		return apply_filters( 'lalia_portal_login_url', $url, $redirect );
+	}
+
+	/**
 	 * Nonce'd WordPress logout URL for use from JavaScript. wp_logout_url()
 	 * returns an HTML-escaped string (`&amp;`) meant for attributes; navigating
 	 * to it verbatim hands WordPress `amp;_wpnonce` and it shows the "do you
@@ -184,9 +218,9 @@ class Lalia_Portal_SSO {
 		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
 
 		if ( ! is_user_logged_in() ) {
-			// Back to /my-lalia/ after login; wp_login_url() honours the
-			// `login_url` filter, so a custom (user_auth) login page is used.
-			wp_safe_redirect( wp_login_url( self::page_url() ) );
+			// Back to /my-lalia/ after login — see login_url() for why this is
+			// not wp_login_url().
+			wp_safe_redirect( self::login_url( self::page_url() ) );
 			exit;
 		}
 
@@ -226,7 +260,7 @@ class Lalia_Portal_SSO {
 		$config     = array(
 			'portalOrigin'      => self::portal_origin(),
 			'logoutUrl'         => self::logout_url(),
-			'loginUrl'          => wp_specialchars_decode( wp_login_url( self::page_url() ), ENT_QUOTES ),
+			'loginUrl'          => wp_specialchars_decode( self::login_url( self::page_url() ), ENT_QUOTES ),
 			'heartbeatUrl'      => add_query_arg( 'action', self::AJAX_HEARTBEAT, admin_url( 'admin-ajax.php' ) ),
 			'heartbeatInterval' => self::HEARTBEAT_INTERVAL_MS,
 			'userId'            => (int) $user_id,
